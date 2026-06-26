@@ -873,92 +873,113 @@ export default function ReportsPage() {
         },
       }));
 
-      try {
-        const response = await fetch('/api/ai/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: ctrl.signal,
-          body: JSON.stringify({
-            messages: [{ role: 'user', content: section.prompt(chartCtx) }],
-            model: 'meta/llama-3.1-70b-instruct',
-            stream: true,   // Stream keeps connection alive — avoids 504 inactivity timeout
-            maxTokens: 4096, // Maximum for llama-3.1-70b on NVIDIA NIM
-          }),
-        });
+      // Attempt the section, retrying once on transient errors (502/504/rate limit)
+      let lastError = '';
+      let succeeded = false;
 
-        if (!response.ok) {
-          throw new Error(`API error ${response.status}: ${await response.text().catch(() => '')}`);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        if (ctrl.signal.aborted) break;
+        if (attempt > 0) {
+          // Wait before retry to let the API recover from rate limiting
+          await new Promise(r => setTimeout(r, 5000));
         }
 
-        // Read the SSE stream and accumulate content
-        const reader = response.body?.getReader();
-        if (!reader) throw new Error('No response stream');
+        try {
+          const response = await fetch('/api/ai/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            signal: ctrl.signal,
+            body: JSON.stringify({
+              messages: [{ role: 'user', content: section.prompt(chartCtx) }],
+              model: 'meta/llama-3.1-70b-instruct',
+              stream: true,   // Streaming keeps connection alive — prevents 504 inactivity timeout
+              maxTokens: 4096,
+            }),
+          });
 
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let accumulated = '';
+          if (!response.ok) {
+            const errText = await response.text().catch(() => '');
+            throw new Error(`API error ${response.status}: ${errText}`);
+          }
 
-        while (true) {
-          if (ctrl.signal.aborted) { reader.cancel(); break; }
+          // Read the SSE stream and accumulate content
+          const reader = response.body?.getReader();
+          if (!reader) throw new Error('No response stream');
 
-          const { done, value } = await reader.read();
-          if (done) break;
+          const decoder = new TextDecoder();
+          let buf = '';
+          let accumulated = '';
 
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() ?? '';
+          while (true) {
+            if (ctrl.signal.aborted) { reader.cancel(); break; }
+            const { done, value } = await reader.read();
+            if (done) break;
 
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed === 'data: [DONE]') continue;
-            if (!trimmed.startsWith('data: ')) continue;
+            buf += decoder.decode(value, { stream: true });
+            const lines = buf.split('\n');
+            buf = lines.pop() ?? '';
 
-            try {
-              const json = JSON.parse(trimmed.slice(6));
-              const delta = json?.choices?.[0]?.delta?.content;
-              if (typeof delta === 'string') {
-                accumulated += delta;
-                // Update content live as it streams in
-                setReports(prev => ({
-                  ...prev,
-                  [reportType]: {
-                    ...prev[reportType]!,
-                    sections: prev[reportType]!.sections.map((s, idx) =>
-                      idx === i ? { ...s, content: accumulated } : s,
-                    ),
-                  },
-                }));
-              }
-            } catch {
-              // Ignore malformed SSE chunks
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === 'data: [DONE]') continue;
+              if (!trimmed.startsWith('data: ')) continue;
+              try {
+                const json = JSON.parse(trimmed.slice(6));
+                const delta = json?.choices?.[0]?.delta?.content;
+                if (typeof delta === 'string') {
+                  accumulated += delta;
+                  setReports(prev => ({
+                    ...prev,
+                    [reportType]: {
+                      ...prev[reportType]!,
+                      sections: prev[reportType]!.sections.map((s, idx) =>
+                        idx === i ? { ...s, content: accumulated } : s,
+                      ),
+                    },
+                  }));
+                }
+              } catch { /* ignore malformed SSE chunks */ }
             }
           }
-        }
 
-        if (!ctrl.signal.aborted) {
-          setReports(prev => ({
-            ...prev,
-            [reportType]: {
-              ...prev[reportType]!,
-              sections: prev[reportType]!.sections.map((s, idx) =>
-                idx === i ? { ...s, content: accumulated || 'No response received.', status: 'done' as SectionStatus } : s,
-              ),
-            },
-          }));
+          if (!ctrl.signal.aborted) {
+            setReports(prev => ({
+              ...prev,
+              [reportType]: {
+                ...prev[reportType]!,
+                sections: prev[reportType]!.sections.map((s, idx) =>
+                  idx === i ? { ...s, content: accumulated || 'No response received.', status: 'done' as SectionStatus } : s,
+                ),
+              },
+            }));
+            succeeded = true;
+            break; // success — exit retry loop
+          }
+        } catch (err) {
+          if (ctrl.signal.aborted) break;
+          lastError = err instanceof Error ? err.message : 'Section failed';
+          if (attempt === 0) {
+            addToast({ type: 'error', message: `Section ${i + 1} timed out — retrying…` });
+          }
         }
-      } catch (err) {
-        if (ctrl.signal.aborted) break;
-        const msg = err instanceof Error ? err.message : 'Section failed';
+      }
+
+      if (!succeeded && !ctrl.signal.aborted) {
         setReports(prev => ({
           ...prev,
           [reportType]: {
             ...prev[reportType]!,
             sections: prev[reportType]!.sections.map((s, idx) =>
-              idx === i ? { ...s, content: msg, status: 'error' as SectionStatus } : s,
+              idx === i ? { ...s, content: lastError || 'Failed after retry.', status: 'error' as SectionStatus } : s,
             ),
           },
         }));
-        addToast({ type: 'error', message: `Section ${i + 1} failed — will continue` });
+        addToast({ type: 'error', message: `Section ${i + 1} failed after retry — continuing` });
+      }
+
+      // Brief pause between sections to stay within NVIDIA rate limits
+      if (i < sections.length - 1 && !ctrl.signal.aborted) {
+        await new Promise(r => setTimeout(r, 2000));
       }
     }
 
