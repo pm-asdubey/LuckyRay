@@ -1,7 +1,6 @@
 [build]
-  base = "apps/web"
   command = "npm run build"
-  publish = ".next"
+  publish = "apps/web/.next"
 
 [build.environment]
   NODE_VERSION = "20"
@@ -15,6 +14,7 @@
   port = 3000
   targetPort = 3000
   framework = "#next"
+  base = "apps/web"
 
 # Headers for security and performance
 [[headers]]
