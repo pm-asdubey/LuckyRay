@@ -30,6 +30,8 @@ export {
 } from './context-builder';
 export type { QuestionTopic } from './context-builder';
 
+export { buildMatchmakingSystemPrompt, buildMatchmakingUserMessage } from './matchmaking-prompt';
+
 export const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com/v1';
 export const DEFAULT_NVIDIA_MODEL = 'meta/llama-3.1-70b-instruct';
 export const MAX_TOKENS = 2048;

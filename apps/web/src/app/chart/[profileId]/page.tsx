@@ -381,7 +381,10 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
     );
   }
 
-  // Build planet → [{house, level}] map for the "by planet" view
+  // Detect if this chart was generated with the old schema (pre-level fields)
+  const hasLevelData = kp.significators.length > 0 && Array.isArray(kp.significators[0]?.level1);
+
+  // Build planet → [{house, level}] map for the "by planet" view (defensive — old data may lack level fields)
   const planetDetailMap = new Map<string, { house: number; level: 1|2|3|4 }[]>();
   for (const hs of kp.significators) {
     const add = (p: string, lvl: 1|2|3|4) => {
@@ -389,14 +392,26 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
       arr.push({ house: hs.house, level: lvl });
       planetDetailMap.set(p, arr);
     };
-    hs.level1.forEach(p => add(p, 1));
-    hs.level2.forEach(p => add(p, 2));
-    hs.level3.forEach(p => add(p, 3));
-    hs.level4.forEach(p => add(p, 4));
+    (hs.level1 ?? []).forEach(p => add(p, 1));
+    (hs.level2 ?? []).forEach(p => add(p, 2));
+    (hs.level3 ?? []).forEach(p => add(p, 3));
+    (hs.level4 ?? []).forEach(p => add(p, 4));
+    // Fallback for old data: treat all flat significators as level 3 (sign lord) if no level data
+    if (!hasLevelData) {
+      (hs.significators ?? []).forEach(p => add(p, 3));
+    }
   }
 
   return (
     <div className="space-y-6 max-w-3xl">
+      {/* Old data banner */}
+      {!hasLevelData && (
+        <div className="rounded-lg border border-amber-900/40 bg-amber-950/10 px-3 py-2 text-2xs text-amber-400">
+          This chart was generated before the 4-level KP update.
+          <strong className="text-amber-300"> Regenerate the chart</strong> to see full Level 1–4 significator data.
+        </div>
+      )}
+
       {/* System note */}
       <p className="text-2xs text-content-subtle bg-surface-elevated rounded-lg px-3 py-2 border border-surface-border">
         KP uses <strong className="text-content-muted">Placidus cusps</strong> (not Whole Sign).
@@ -484,10 +499,10 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
                 {kp.significators.map((hs, i) => (
                   <tr key={hs.house} className={cn('border-b border-surface-border/50', i % 2 === 1 && 'bg-surface-elevated/30')}>
                     <td className="px-3 py-1.5 font-bold text-accent">{hs.house}</td>
-                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[0])}>{hs.level1.join(', ') || '—'}</td>
-                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[1])}>{hs.level2.join(', ') || '—'}</td>
-                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[2])}>{hs.level3.join(', ') || '—'}</td>
-                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[3])}>{hs.level4.join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[0])}>{(hs.level1 ?? []).join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[1])}>{(hs.level2 ?? []).join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[2])}>{(hs.level3 ?? []).join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[3])}>{(hs.level4 ?? []).join(', ') || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -555,9 +570,11 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
         </p>
         <div className="space-y-2">
           {kp.events.map(ev => {
-            const strength = ev.isPromised ? ev.promiseStrength : 'weak';
+            const strength: 'strong' | 'moderate' | 'weak' = ev.isPromised
+              ? (ev.promiseStrength ?? 'moderate')
+              : 'weak';
             const promiseLabel = ev.isPromised
-              ? ev.promiseStrength === 'strong' ? 'STRONG' : 'MODERATE'
+              ? (ev.promiseStrength === 'strong' ? 'STRONG' : 'MODERATE')
               : 'NOT PROMISED';
             return (
               <div key={ev.topic} className="rounded-xl border border-surface-border overflow-hidden">
@@ -594,15 +611,17 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
                       </div>
                       <div className="text-content-muted">
                         <span className="text-content-subtle">Signifies: </span>
-                        {ev.sublordSignifiesWithLevel.length > 0
-                          ? ev.sublordSignifiesWithLevel
+                        {(ev.sublordSignifiesWithLevel ?? []).length > 0
+                          ? (ev.sublordSignifiesWithLevel ?? [])
                               .sort((a, b) => a.house - b.house)
                               .map((d, i) => (
                                 <span key={i} className={cn('mr-1.5', LEVEL_COLORS[d.level - 1])}>
                                   H{d.house}<span className="opacity-60">·L{d.level}</span>
                                 </span>
                               ))
-                          : <span className="text-content-subtle">none</span>
+                          : ev.sublordSignifies?.length > 0
+                            ? ev.sublordSignifies.map(h => `H${h}`).join(', ')
+                            : <span className="text-content-subtle">none</span>
                         }
                       </div>
                       <div className="text-content-muted leading-relaxed">{ev.promiseReason}</div>

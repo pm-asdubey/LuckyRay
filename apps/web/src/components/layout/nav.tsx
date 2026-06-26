@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, LayoutDashboard, MessageCircle, Settings, FileText } from 'lucide-react';
+import { Home, LayoutDashboard, MessageCircle, Settings, FileText, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 import { LuckyRayLogo } from '@/components/brand/logo';
@@ -19,8 +19,9 @@ const navItems: NavItem[] = [
   { href: '/',        label: 'Home',     icon: <Home size={18} />,           exact: true },
   { href: '/chart',   label: 'Chart',    icon: <LayoutDashboard size={18} /> },
   { href: '/reports', label: 'Reports',  icon: <FileText size={18} /> },
-  { href: '/chat',    label: 'Chat',     icon: <MessageCircle size={18} /> },
-  { href: '/settings',label: 'Settings', icon: <Settings size={18} /> },
+  { href: '/chat',        label: 'Chat',    icon: <MessageCircle size={18} /> },
+  { href: '/guna-milan',  label: 'Milan',   icon: <Users size={18} /> },
+  { href: '/settings',    label: 'Settings',icon: <Settings size={18} /> },
 ];
 
 export function Sidebar() {

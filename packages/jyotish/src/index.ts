@@ -41,6 +41,8 @@ export { signIndexToHouse } from './houses';
 export { computeCurrentGochar, checkSadeSati } from './gochar';
 export { serializeChartInterpretation } from './interpreter';
 export { serializeKPInterpretation } from './kp';
+export { computeGunaMilan, getMoonDataFromLongitude } from './guna-milan';
+export type { GunaMilanResult, GunaMilanInput, KootaScore } from './guna-milan';
 
 export interface ChartGenerationInput {
   profile: Pick<Profile, 'id' | 'name' | 'gender'>;
