@@ -73,9 +73,12 @@ export async function POST(req: NextRequest) {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('NVIDIA API error:', response.status, errorText);
+      const headers: Record<string, string> = {};
+      const retryAfter = response.headers.get('retry-after');
+      if (retryAfter) headers['retry-after'] = retryAfter;
       return NextResponse.json(
-        { error: `AI service error: ${response.status}` },
-        { status: response.status >= 500 ? 502 : response.status },
+        { error: `AI service error: ${response.status}`, status: response.status },
+        { status: response.status, headers },
       );
     }
 

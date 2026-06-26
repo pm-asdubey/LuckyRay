@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { Home, LayoutDashboard, MessageCircle, Settings, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
+import { LuckyRayLogo } from '@/components/brand/logo';
 
 interface NavItem {
   href: string;
@@ -32,12 +33,8 @@ export function Sidebar() {
       aria-label="Main navigation"
     >
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 py-5 border-b border-surface-border">
-        <StarLogo />
-        <div>
-          <span className="text-sm font-semibold text-content">LuckyRay</span>
-          <span className="text-2xs text-content-subtle block">Jyotish AI</span>
-        </div>
+      <div className="flex items-center px-4 py-4 border-b border-surface-border">
+        <LuckyRayLogo size={36} showWordmark />
       </div>
 
       {/* Active profile indicator */}
@@ -123,21 +120,6 @@ export function BottomNav() {
         })}
       </div>
     </nav>
-  );
-}
-
-function StarLogo() {
-  return (
-    <div className="h-8 w-8 rounded-lg bg-accent-subtle border border-accent-muted flex items-center justify-center">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-accent">
-        <path
-          d="M8 1L9.5 6H14.5L10.5 9L12 14L8 11L4 14L5.5 9L1.5 6H6.5L8 1Z"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-        />
-      </svg>
-    </div>
   );
 }
 
