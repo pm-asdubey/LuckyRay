@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, RefreshCw, MessageCircle, Download, Edit2 } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MessageCircle, Download, Edit2, CalendarDays, FileText } from 'lucide-react';
 import { getProfile, getLatestChart, saveChart } from '@luckyray/storage';
 import type { Profile, StoredChart } from '@luckyray/shared';
 import { generateChart } from '@luckyray/jyotish';
@@ -179,6 +179,18 @@ export default function ChartPage() {
                       <Download size={14} />
                       <span className="hidden sm:inline">Export</span>
                     </Button>
+                    <Link href={`/dasha/${profile.id}`}>
+                      <Button variant="ghost" size="sm">
+                        <CalendarDays size={14} />
+                        <span className="hidden sm:inline">Dashas</span>
+                      </Button>
+                    </Link>
+                    <Link href={`/reports/${profile.id}`}>
+                      <Button variant="ghost" size="sm">
+                        <FileText size={14} />
+                        <span className="hidden sm:inline">Reports</span>
+                      </Button>
+                    </Link>
                     <Link href={`/chat/${profile.id}`}>
                       <Button variant="secondary" size="sm">
                         <MessageCircle size={14} />
@@ -303,7 +315,7 @@ export default function ChartPage() {
 
                 {activeTab === 'dashas' && (
                   <div className="max-w-xl">
-                    <DashaTimeline dashas={chart.dashas} />
+                    <DashaTimeline dashas={chart.dashas} profileId={profile.id} />
                   </div>
                 )}
 

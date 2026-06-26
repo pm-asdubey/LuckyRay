@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, LayoutDashboard, MessageCircle, Settings } from 'lucide-react';
+import { Home, Users, LayoutDashboard, MessageCircle, Settings, CalendarDays, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore } from '@/store/app-store';
 
@@ -17,7 +17,9 @@ const navItems: NavItem[] = [
   { href: '/', label: 'Home', icon: <Home size={18} />, exact: true },
   { href: '/profiles', label: 'Profiles', icon: <Users size={18} /> },
   { href: '/chart', label: 'Chart', icon: <LayoutDashboard size={18} /> },
+  { href: '/dasha', label: 'Dashas', icon: <CalendarDays size={18} /> },
   { href: '/chat', label: 'Chat', icon: <MessageCircle size={18} /> },
+  { href: '/reports', label: 'Reports', icon: <FileText size={18} /> },
   { href: '/settings', label: 'Settings', icon: <Settings size={18} /> },
 ];
 

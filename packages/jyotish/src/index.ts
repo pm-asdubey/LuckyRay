@@ -37,6 +37,7 @@ export const ENGINE_VERSION = '1.0.0';
 
 export { formatDashaDuration } from './dashas';
 export { signIndexToHouse } from './houses';
+export { computeCurrentGochar, checkSadeSati } from './gochar';
 
 export interface ChartGenerationInput {
   profile: Pick<Profile, 'id' | 'name' | 'gender'>;

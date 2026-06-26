@@ -157,6 +157,7 @@ export interface DashaPeriod {
   endDate: string;     // ISO 8601
   durationYears: number;
   antardasha?: DashaPeriod[];
+  pratyantar?: DashaPeriod[];  // Third-level periods (Pratyantar / Sookshma Dasha)
 }
 
 export interface DashaData {
@@ -168,6 +169,23 @@ export interface DashaData {
   allPeriods: DashaPeriod[];
   currentMahadasha: DashaPeriod;
   currentAntardasha: DashaPeriod | null;
+  currentPratyantar: DashaPeriod | null;  // Current Pratyantar Dasha period
+}
+
+// Current planetary transit positions (Gochar)
+export interface GocharPlanet {
+  id: PlanetId;
+  sign: string;
+  signIndex: number;
+  degree: number;
+  nakshatra: string;
+  isRetrograde: boolean;
+  natalHouse: number;  // Which natal house this transit falls in
+}
+
+export interface GocharData {
+  computedAt: string;  // ISO 8601
+  planets: GocharPlanet[];
 }
 
 // ─── Divisional Charts ───────────────────────────────────────────────────────
@@ -311,8 +329,16 @@ export interface ChartContext {
   dashas: {
     current: { planet: PlanetId; endsAt: string };
     antardasha: { planet: PlanetId; endsAt: string } | null;
+    pratyantar?: { planet: PlanetId; endsAt: string } | null;
+    upcomingPeriods?: Array<{
+      level: 'Mahadasha' | 'Antardasha';
+      planet: PlanetId;
+      startsAt: string;
+      endsAt: string;
+    }>;
   };
   yogas: Pick<YogaData, 'name' | 'detected' | 'strength'>[];
   doshas: Pick<DoshaData, 'name' | 'detected' | 'severity'>[];
   aspects: Pick<AspectData, 'sourcePlanet' | 'targetHouse' | 'targetPlanets' | 'strength'>[];
+  gochar?: Pick<GocharPlanet, 'id' | 'sign' | 'natalHouse' | 'isRetrograde' | 'nakshatra'>[];
 }

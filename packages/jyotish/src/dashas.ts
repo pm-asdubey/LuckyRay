@@ -72,6 +72,10 @@ export function computeVimshottariDasha(
     new Date(a.startDate) <= now && new Date(a.endDate) >= now,
   ) ?? null;
 
+  const currentPratyantar = currentAntardasha?.pratyantar?.find(p =>
+    new Date(p.startDate) <= now && new Date(p.endDate) >= now,
+  ) ?? null;
+
   return {
     system: 'Vimshottari',
     birthNakshatra: nakshatra,
@@ -81,6 +85,7 @@ export function computeVimshottariDasha(
     allPeriods,
     currentMahadasha,
     currentAntardasha,
+    currentPratyantar,
   };
 }
 
@@ -134,7 +139,40 @@ function buildAntardasha(
     // Antardasha duration = (mahadasha_years × antardasha_planet_years) / 120
     const durationYears = (totalYears * VIMSHOTTARI_YEARS[planet]!) / VIMSHOTTARI_TOTAL_YEARS;
     const durationMs = durationYears * DAYS_PER_YEAR * 86400000;
+    const endDate = new Date(currentDate.getTime() + durationMs);
 
+    const pratyantar = buildPratyantar(planet, durationYears, currentDate);
+
+    periods.push({
+      planet,
+      startDate: currentDate.toISOString(),
+      endDate: endDate.toISOString(),
+      durationYears,
+      pratyantar,
+    });
+
+    currentDate = endDate;
+  }
+
+  return periods;
+}
+
+function buildPratyantar(
+  antardashaLord: PlanetId,
+  antarDurationYears: number,
+  startDate: Date,
+): DashaPeriod[] {
+  const firstIndex = VIMSHOTTARI_ORDER.indexOf(antardashaLord);
+  const periods: DashaPeriod[] = [];
+  let currentDate = startDate;
+
+  for (let i = 0; i < 9; i++) {
+    const planetIndex = (firstIndex + i) % 9;
+    const planet = VIMSHOTTARI_ORDER[planetIndex]!;
+
+    // Pratyantar duration = (antardasha_years × pratyantar_planet_years) / 120
+    const durationYears = (antarDurationYears * VIMSHOTTARI_YEARS[planet]!) / VIMSHOTTARI_TOTAL_YEARS;
+    const durationMs = durationYears * DAYS_PER_YEAR * 86400000;
     const endDate = new Date(currentDate.getTime() + durationMs);
 
     periods.push({

@@ -1,18 +1,20 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import type { DashaData, DashaPeriod } from '@luckyray/shared';
 import { PLANET_SYMBOLS } from '@luckyray/shared';
 import { formatDashaDuration } from '@luckyray/jyotish';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 
 interface DashaTimelineProps {
   dashas: DashaData;
+  profileId?: string;
 }
 
-export function DashaTimeline({ dashas }: DashaTimelineProps) {
+export function DashaTimeline({ dashas, profileId }: DashaTimelineProps) {
   const [expanded, setExpanded] = useState<string | null>(dashas.currentMahadasha.planet);
 
   const now = new Date();
@@ -25,7 +27,7 @@ export function DashaTimeline({ dashas }: DashaTimelineProps) {
           <span className="text-lg" aria-hidden="true">
             {PLANET_SYMBOLS[dashas.currentMahadasha.planet] ?? ''}
           </span>
-          <div>
+          <div className="flex-1">
             <div className="text-xs text-accent font-medium uppercase tracking-wider">
               Current Mahadasha
             </div>
@@ -33,11 +35,22 @@ export function DashaTimeline({ dashas }: DashaTimelineProps) {
               {dashas.currentMahadasha.planet}
             </div>
           </div>
+          {profileId && (
+            <Link href={`/dasha/${profileId}`} className="text-2xs text-accent hover:underline flex items-center gap-1">
+              Full view <ExternalLink size={10} />
+            </Link>
+          )}
         </div>
         {dashas.currentAntardasha && (
           <div className="text-xs text-content-muted">
             Antardasha: <span className="text-content font-medium">{dashas.currentAntardasha.planet}</span>
             {' '}· until {formatDate(dashas.currentAntardasha.endDate)}
+          </div>
+        )}
+        {dashas.currentPratyantar && (
+          <div className="text-xs text-content-muted">
+            Pratyantar: <span className="text-content font-medium">{dashas.currentPratyantar.planet}</span>
+            {' '}· until {formatDate(dashas.currentPratyantar.endDate)}
           </div>
         )}
         <div className="text-2xs text-content-subtle">

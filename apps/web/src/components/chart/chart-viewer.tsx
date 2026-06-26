@@ -53,20 +53,24 @@ export function ChartViewer({ chart }: ChartViewerProps) {
           {/* Outer border */}
           <rect x="0" y="0" width="320" height="320" fill="none" stroke="hsl(220 13% 18%)" strokeWidth="1.5" rx="2" />
 
-          {/* Grid lines */}
-          {/* Outer 4x4 grid */}
-          <line x1="80" y1="0" x2="80" y2="320" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="160" y1="0" x2="160" y2="320" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="240" y1="0" x2="240" y2="320" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="0" y1="80" x2="320" y2="80" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="0" y1="160" x2="320" y2="160" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="0" y1="240" x2="320" y2="240" stroke="hsl(220 13% 18%)" strokeWidth="1" />
+          {/* Outer grid lines — define the 12 house cells */}
+          <line x1="80" y1="0" x2="80" y2="320" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="160" y1="0" x2="160" y2="80" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="160" y1="240" x2="160" y2="320" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="240" y1="0" x2="240" y2="320" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="0" y1="80" x2="320" y2="80" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="0" y1="160" x2="80" y2="160" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="240" y1="160" x2="320" y2="160" stroke="hsl(220 13% 20%)" strokeWidth="1" />
+          <line x1="0" y1="240" x2="320" y2="240" stroke="hsl(220 13% 20%)" strokeWidth="1" />
 
-          {/* Center diamond lines */}
-          <line x1="80" y1="80" x2="160" y2="160" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="240" y1="80" x2="160" y2="160" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="80" y1="240" x2="160" y2="160" stroke="hsl(220 13% 18%)" strokeWidth="1" />
-          <line x1="240" y1="240" x2="160" y2="160" stroke="hsl(220 13% 18%)" strokeWidth="1" />
+          {/* Inner diamond — the classic North Indian kundli center */}
+          {/* Fill masks any grid lines passing through center area */}
+          <polygon
+            points="160,80 240,160 160,240 80,160"
+            fill="hsl(220 13% 10%)"
+            stroke="hsl(220 13% 22%)"
+            strokeWidth="1.5"
+          />
 
           {/* House cells */}
           {chart.houses.map((house) => {
@@ -142,25 +146,27 @@ export function ChartViewer({ chart }: ChartViewerProps) {
             );
           })}
 
-          {/* Center — Lagna sign */}
+          {/* Center diamond label — Lagna sign */}
           <text
-            x="160" y="154"
+            x="160" y="152"
             textAnchor="middle"
-            fontSize="10"
-            fontWeight="600"
-            fill="hsl(220 15% 65%)"
+            fontSize="9"
+            fontWeight="700"
+            fill="hsl(258 84% 68%)"
             fontFamily="system-ui"
+            letterSpacing="1"
           >
             {chart.ascendant.sign.slice(0, 3).toUpperCase()}
           </text>
           <text
-            x="160" y="167"
+            x="160" y="164"
             textAnchor="middle"
-            fontSize="8"
-            fill="hsl(220 10% 40%)"
+            fontSize="7"
+            fill="hsl(220 10% 38%)"
             fontFamily="system-ui"
+            letterSpacing="0.5"
           >
-            Lagna
+            LAGNA
           </text>
         </svg>
       </div>

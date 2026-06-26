@@ -7,6 +7,7 @@ import { ArrowLeft, LayoutDashboard } from 'lucide-react';
 import { getProfile, getLatestChart, createConversation, getConversation, addMessage, getMessagesForConversation, updateConversation } from '@luckyray/storage';
 import type { Profile, StoredChart, Message, Conversation } from '@luckyray/shared';
 import { buildChartContext } from '@luckyray/ai';
+import { computeCurrentGochar } from '@luckyray/jyotish';
 import { AppShell } from '@/components/layout/app-shell';
 import { Sidebar, BottomNav } from '@/components/layout/nav';
 import { Button } from '@/components/ui/button';
@@ -34,9 +35,13 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming } = useAppStore();
 
-  // Build context once chart is loaded
+  // Build context once chart is loaded, including current transits
   const chartContext = storedChart?.chart
-    ? buildChartContext(storedChart.chart, 'general')
+    ? buildChartContext(
+        storedChart.chart,
+        'general',
+        computeCurrentGochar(storedChart.chart.ascendant.signIndex).planets,
+      )
     : undefined;
 
   const { send, abort } = useAIChat({
