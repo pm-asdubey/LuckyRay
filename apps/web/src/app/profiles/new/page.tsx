@@ -57,7 +57,7 @@ export default function NewProfilePage() {
               </Link>
             }
           />
-          <PageContent className="max-w-2xl">
+          <PageContent className="max-w-2xl pb-28 md:pb-6">
             <BirthDetailsForm onSubmit={handleSubmit} submitLabel="Create profile" />
           </PageContent>
         </PageLayout>

@@ -53,14 +53,25 @@ const REPORT_TYPES: ReportType[] = ['career', 'love', 'wealth', 'health'];
 
 const INSTRUCTION_PREAMBLE = `
 ANALYSIS RULES — FOLLOW STRICTLY:
+
+DATA FIDELITY (most important):
+- Use ONLY the planetary positions, house occupants, and aspects listed in the CHART DATA section below
+- ASPECTS: Only state aspects that are explicitly listed in the "Planetary Aspects (Drishti)" section. Do not invent aspects.
+- CONJUNCTIONS: Planets in the same house are CONJUNCT. They do not "aspect" each other. Never say "X aspects Y" if they share a house.
+- DIGNITY: Own sign / Moolatrikona = STRONG (not neutral). Read the dignity label from the chart data and use it exactly.
+- HOUSE OCCUPANCY: If a house shows "(empty)", do not place any planet in it. If it shows occupants, use those exactly.
+
+ANALYSIS QUALITY:
 - Every statement must cite specific chart data (house number, planet name, sign, degree)
 - State confidence on EVERY prediction: [HIGH CONFIDENCE], [MEDIUM CONFIDENCE], or [LOW CONFIDENCE]
 - Do NOT soften negative indicators. Honest analysis serves the person better than false comfort
 - For timing: analyze Mahadasha → Antardasha → Pratyantar → Gochar in sequence
 - Be specific about time windows. Avoid vague phrases like "in the future" or "someday"
+
+OUTPUT:
 - MINIMUM 800 words for this section. Do not stop until every sub-topic listed is fully covered
-- CRITICAL: Never truncate mid-sentence or mid-analysis. If you are approaching your output limit, wrap up the current point cleanly with a summary paragraph — but do not stop abruptly
-- Write in clear prose. Use paragraph breaks for readability. This is a professional report
+- CRITICAL: Never truncate mid-sentence or mid-analysis. If approaching your output limit, wrap up with a summary paragraph — but do not stop abruptly
+- Write in clear prose with paragraph breaks. This is a professional report
 `.trim();
 
 function makePrompt(instruction: string, chartCtx: string): string {

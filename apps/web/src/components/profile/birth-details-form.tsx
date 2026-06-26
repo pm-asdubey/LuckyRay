@@ -282,7 +282,7 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
         <h2 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
           Birth location
         </h2>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
             <Input
               label="Birth place"
@@ -300,16 +300,17 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
               }}
             />
           </div>
-          <div className="mt-6">
+          <div className="sm:mt-6 flex sm:block">
             <Button
               type="button"
               variant="secondary"
               size="md"
               loading={searching}
               onClick={handlePlaceSearch}
+              className="w-full sm:w-auto"
             >
               <Search size={14} />
-              Search
+              Search location
             </Button>
           </div>
         </div>
@@ -356,7 +357,7 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
 
       {/* Submit */}
       <div className="flex justify-end gap-3 pt-2">
-        <Button type="submit" variant="primary" loading={submitting}>
+        <Button type="submit" variant="primary" loading={submitting} className="w-full sm:w-auto">
           {submitLabel}
         </Button>
       </div>

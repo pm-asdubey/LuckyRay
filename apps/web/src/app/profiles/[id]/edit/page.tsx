@@ -97,7 +97,7 @@ export default function EditProfilePage() {
               </Link>
             }
           />
-          <PageContent className="max-w-2xl">
+          <PageContent className="max-w-2xl pb-28 md:pb-6">
             <BirthDetailsForm
               defaultValues={{
                 name: profile.name,

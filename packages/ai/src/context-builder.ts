@@ -1,31 +1,23 @@
 /**
  * AI Context Builder
  *
- * Transforms the canonical chart into an optimized context for the AI.
- * Includes Mahadasha, Antardasha, and Pratyantar Dasha levels, plus
- * current Gochar (transits) for precise timing analysis.
+ * Converts a CanonicalChart into AI-ready context using the deterministic
+ * Jyotish interpreter. The AI receives pre-written factual sentences —
+ * not raw chart tables — so it synthesizes and articulates, not derives.
  *
- * The context builder NEVER modifies chart data — it only selects and formats it.
+ * This eliminates hallucinations about aspects, conjunctions, dignity,
+ * and house occupancy — those facts are computed in code, not by the LLM.
  */
 
-import type { CanonicalChart, ChartContext, AIMessage, PlanetId, GocharPlanet } from '@luckyray/shared';
+import type { CanonicalChart, ChartContext, AIMessage, GocharPlanet, PlanetId } from '@luckyray/shared';
 
 export type QuestionTopic =
-  | 'career'
-  | 'relationship'
-  | 'health'
-  | 'finance'
-  | 'education'
-  | 'children'
-  | 'spirituality'
-  | 'personality'
-  | 'dasha'
-  | 'general'
-  | 'learning';
+  | 'career' | 'relationship' | 'health' | 'finance'
+  | 'education' | 'children' | 'spirituality' | 'personality'
+  | 'dasha' | 'general' | 'learning';
 
 export function detectQuestionTopic(question: string): QuestionTopic {
   const q = question.toLowerCase();
-
   if (/career|job|work|profession|business|office|employ|occupation/.test(q)) return 'career';
   if (/marriage|spouse|partner|relation|love|romance|wedding|husband|wife|companion/.test(q)) return 'relationship';
   if (/health|illness|disease|body|medical|doctor|heal|energy|vitality/.test(q)) return 'health';
@@ -39,270 +31,151 @@ export function detectQuestionTopic(question: string): QuestionTopic {
   return 'general';
 }
 
-function getRelevantHouses(topic: QuestionTopic): number[] {
-  const TOPIC_HOUSES: Record<QuestionTopic, number[]> = {
-    career:       [1, 2, 6, 10, 11],
-    relationship: [1, 2, 5, 7, 8, 11],
-    health:       [1, 6, 8, 12],
-    finance:      [1, 2, 5, 8, 9, 11],
-    education:    [1, 4, 5, 9],
-    children:     [1, 5, 9],
-    spirituality: [1, 8, 9, 12],
-    personality:  [1, 5, 9],
-    dasha:        [1, 2, 4, 6, 7, 10, 11],
-    learning:     [1, 5, 9],
-    general:      [1, 2, 4, 6, 7, 10, 11],
-  };
-  return TOPIC_HOUSES[topic] ?? [1, 4, 7, 10];
-}
-
-function getRelevantPlanets(topic: QuestionTopic): PlanetId[] {
-  const TOPIC_PLANETS: Record<QuestionTopic, PlanetId[]> = {
-    career:       ['Sun', 'Saturn', 'Mercury', 'Mars', 'Jupiter'],
-    relationship: ['Venus', 'Moon', 'Mars', 'Jupiter', 'Rahu'],
-    health:       ['Sun', 'Moon', 'Mars', 'Saturn', 'Rahu', 'Ketu'],
-    finance:      ['Jupiter', 'Venus', 'Mercury', 'Moon', 'Saturn'],
-    education:    ['Mercury', 'Jupiter', 'Moon', 'Saturn'],
-    children:     ['Jupiter', 'Moon', 'Sun', 'Venus'],
-    spirituality: ['Jupiter', 'Ketu', 'Saturn', 'Moon'],
-    personality:  ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter'],
-    dasha:        ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'],
-    learning:     ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'],
-    general:      ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'],
-  };
-  return TOPIC_PLANETS[topic] ?? ['Sun', 'Moon', 'Mars', 'Mercury', 'Jupiter', 'Venus', 'Saturn', 'Rahu', 'Ketu'];
-}
-
 /**
  * Build upcoming dasha periods for the next ~3 years.
  */
 function buildUpcomingPeriods(chart: CanonicalChart): ChartContext['dashas']['upcomingPeriods'] {
   const now = new Date();
-  const cutoff = new Date(now.getTime() + 3 * 365.25 * 86400000); // 3 years ahead
+  const cutoff = new Date(now.getTime() + 3 * 365.25 * 86400000);
   const upcoming: NonNullable<ChartContext['dashas']['upcomingPeriods']> = [];
 
   for (const maha of chart.dashas.allPeriods) {
-    const mahaStart = new Date(maha.startDate);
     const mahaEnd = new Date(maha.endDate);
-
-    // Only include future or ongoing mahadashas within cutoff
+    const mahaStart = new Date(maha.startDate);
     if (mahaEnd <= now) continue;
     if (mahaStart > cutoff) break;
-
     if (mahaStart > now) {
-      upcoming.push({
-        level: 'Mahadasha',
-        planet: maha.planet,
-        startsAt: maha.startDate,
-        endsAt: maha.endDate,
-      });
+      upcoming.push({ level: 'Mahadasha', planet: maha.planet, startsAt: maha.startDate, endsAt: maha.endDate });
     }
-
-    // Include upcoming antardashas within this mahadasha
     for (const anti of maha.antardasha ?? []) {
       const antiStart = new Date(anti.startDate);
       const antiEnd = new Date(anti.endDate);
       if (antiEnd <= now) continue;
       if (antiStart > cutoff) break;
-
       if (antiStart > now) {
-        upcoming.push({
-          level: 'Antardasha',
-          planet: anti.planet,
-          startsAt: anti.startDate,
-          endsAt: anti.endDate,
-        });
+        upcoming.push({ level: 'Antardasha', planet: anti.planet, startsAt: anti.startDate, endsAt: anti.endDate });
       }
     }
   }
-
-  return upcoming.slice(0, 12); // Cap to avoid token bloat
+  return upcoming.slice(0, 12);
 }
 
 /**
- * Build optimized chart context for the AI.
+ * Build a ChartContext object (still needed for typed consumers).
+ * The serialized form now comes from serializeChartContext which
+ * delegates to the deterministic interpreter.
  */
 export function buildChartContext(
   chart: CanonicalChart,
   question: string,
   gochar?: GocharPlanet[],
 ): ChartContext {
-  const topic = detectQuestionTopic(question);
-  const relevantPlanetIds = getRelevantPlanets(topic);
-  const relevantHouseNumbers = getRelevantHouses(topic);
-
-  // Always include ascendant lord
-  const ascLord = chart.houses[0]?.lord;
-  if (ascLord && !relevantPlanetIds.includes(ascLord)) {
-    relevantPlanetIds.push(ascLord);
-  }
-
-  // For dasha questions, include all planets
-  const planets = chart.planets
-    .filter(p => topic === 'dasha' || topic === 'general' || relevantPlanetIds.includes(p.id))
-    .map(p => ({
-      id: p.id,
-      name: p.name,
-      sign: p.sign,
-      house: p.house,
-      degreesInSign: p.degreesInSign,
-      nakshatra: p.nakshatra,
-      pada: p.pada,
-      isRetrograde: p.isRetrograde,
-      isCombust: p.isCombust,
-      dignity: p.dignity,
-    }));
-
-  const houses = chart.houses
-    .filter(h => topic === 'dasha' || topic === 'general' || relevantHouseNumbers.includes(h.number))
-    .map(h => ({
-      number: h.number,
-      sign: h.sign,
-      lord: h.lord,
-      occupants: h.occupants,
-    }));
-
   const currentDasha = chart.dashas.currentMahadasha;
   const currentAntardasha = chart.dashas.currentAntardasha;
   const currentPratyantar = chart.dashas.currentPratyantar;
-
   const upcomingPeriods = buildUpcomingPeriods(chart);
 
   return {
-    profile: {
-      name: chart.profile.name,
-      gender: chart.profile.gender,
-    },
+    profile: { name: chart.profile.name, gender: chart.profile.gender },
     birthDetails: chart.birthDetails,
     ascendant: chart.ascendant,
-    planets,
-    houses,
+    // Always include ALL planets and houses — no topic-based filtering
+    planets: chart.planets.map(p => ({
+      id: p.id, name: p.name, sign: p.sign, house: p.house,
+      degreesInSign: p.degreesInSign, nakshatra: p.nakshatra, pada: p.pada,
+      isRetrograde: p.isRetrograde, isCombust: p.isCombust, dignity: p.dignity,
+    })),
+    houses: chart.houses.map(h => ({
+      number: h.number, sign: h.sign, lord: h.lord, occupants: h.occupants,
+    })),
     dashas: {
-      current: {
-        planet: currentDasha.planet,
-        endsAt: currentDasha.endDate,
-      },
-      antardasha: currentAntardasha ? {
-        planet: currentAntardasha.planet,
-        endsAt: currentAntardasha.endDate,
-      } : null,
-      pratyantar: currentPratyantar ? {
-        planet: currentPratyantar.planet,
-        endsAt: currentPratyantar.endDate,
-      } : null,
+      current: { planet: currentDasha.planet, endsAt: currentDasha.endDate },
+      antardasha: currentAntardasha ? { planet: currentAntardasha.planet, endsAt: currentAntardasha.endDate } : null,
+      pratyantar: currentPratyantar ? { planet: currentPratyantar.planet, endsAt: currentPratyantar.endDate } : null,
       upcomingPeriods,
     },
-    yogas: chart.yogas
-      .filter(y => y.detected)
-      .map(y => ({ name: y.name, detected: y.detected, strength: y.strength })),
-    doshas: chart.doshas
-      .filter(d => d.detected)
-      .map(d => ({ name: d.name, detected: d.detected, severity: d.severity })),
-    aspects: chart.aspects
-      .filter(a => relevantPlanetIds.includes(a.sourcePlanet))
-      .slice(0, 20)
-      .map(a => ({
-        sourcePlanet: a.sourcePlanet,
-        targetHouse: a.targetHouse,
-        targetPlanets: a.targetPlanets,
-        strength: a.strength,
-      })),
-    gochar: gochar?.map(g => ({
-      id: g.id,
-      sign: g.sign,
-      natalHouse: g.natalHouse,
-      isRetrograde: g.isRetrograde,
-      nakshatra: g.nakshatra,
+    yogas: chart.yogas.filter(y => y.detected).map(y => ({ name: y.name, detected: y.detected, strength: y.strength })),
+    doshas: chart.doshas.filter(d => d.detected).map(d => ({ name: d.name, detected: d.detected, severity: d.severity })),
+    aspects: chart.aspects.map(a => ({
+      sourcePlanet: a.sourcePlanet, targetHouse: a.targetHouse,
+      targetPlanets: a.targetPlanets, strength: a.strength,
     })),
-  };
+    gochar: gochar?.map(g => ({
+      id: g.id, sign: g.sign, natalHouse: g.natalHouse,
+      isRetrograde: g.isRetrograde, nakshatra: g.nakshatra,
+    })),
+    // Store the canonical chart for interpreter access
+    _canonicalChart: chart,
+  } as ChartContext & { _canonicalChart: CanonicalChart };
 }
 
 /**
- * Serialize ChartContext to a compact, readable string for the prompt.
+ * Serialize ChartContext to AI prompt text.
+ *
+ * Uses the deterministic interpreter to produce pre-written factual sentences.
+ * Gochar (transit) data is appended separately since it is computed at runtime.
  */
 export function serializeChartContext(context: ChartContext): string {
+  const canonical = (context as ChartContext & { _canonicalChart?: CanonicalChart })._canonicalChart;
+
+  // Use deterministic interpreter if canonical chart is attached
+  if (canonical) {
+    // Lazy import to keep the ai package from depending on jyotish at type-check time
+    // The actual import is at runtime — both packages are in the same monorepo
+    const { serializeChartInterpretation } = require('@luckyray/jyotish');
+    let text: string = serializeChartInterpretation(canonical);
+
+    // Append gochar section
+    if (context.gochar && context.gochar.length > 0) {
+      const gocharLines: string[] = ['', '── CURRENT GOCHAR (TODAY\'S TRANSITS) ──────────────────────'];
+      for (const g of context.gochar) {
+        const retro = g.isRetrograde ? ' [RETROGRADE]' : '';
+        gocharLines.push(`${g.id}${retro}: transiting ${g.sign} (${g.nakshatra}) → falls in natal H${g.natalHouse}`);
+      }
+      gocharLines.push('');
+      text += gocharLines.join('\n');
+    }
+
+    // Append upcoming dashas
+    if (context.dashas.upcomingPeriods && context.dashas.upcomingPeriods.length > 0) {
+      const dashLines: string[] = ['── UPCOMING DASHA PERIODS (next 3 years) ───────────────────'];
+      for (const p of context.dashas.upcomingPeriods) {
+        dashLines.push(`${p.level}: ${p.planet} (${p.startsAt.slice(0, 10)} — ${p.endsAt.slice(0, 10)})`);
+      }
+      dashLines.push('');
+      text += '\n' + dashLines.join('\n');
+    }
+
+    return text;
+  }
+
+  // Fallback: plain table serialization (used when canonical chart not attached)
+  return serializeFallback(context);
+}
+
+/**
+ * Fallback serializer — used only when canonical chart is unavailable.
+ */
+function serializeFallback(context: ChartContext): string {
   const lines: string[] = [];
-
   lines.push(`## Chart for ${context.profile.name}`);
-  if (context.profile.gender) lines.push(`Gender: ${context.profile.gender}`);
   lines.push(`Birth: ${context.birthDetails.date} ${context.birthDetails.time} at ${context.birthDetails.place}`);
-  lines.push(`Coordinates: ${context.birthDetails.latitude}°, ${context.birthDetails.longitude}°`);
-  lines.push(`Timezone: ${context.birthDetails.timezone}`);
+  lines.push(`Ascendant: ${context.ascendant.sign} ${context.ascendant.degree}°`);
   lines.push('');
-
-  lines.push('## Ascendant (Lagna)');
-  lines.push(`${context.ascendant.sign} ${context.ascendant.degree}°${context.ascendant.minute}' | Nakshatra: ${context.ascendant.nakshatra} Pada ${context.ascendant.pada}`);
-  lines.push('');
-
-  lines.push('## Planetary Positions (Natal)');
+  lines.push('## Planets');
   for (const p of context.planets) {
-    const flags = [
-      p.isRetrograde ? '℞' : '',
-      p.isCombust ? 'combust' : '',
-      p.dignity,
-    ].filter(Boolean).join(', ');
-    lines.push(`${p.name}: ${p.sign} H${p.house} ${p.degreesInSign.toFixed(1)}° | Nak: ${p.nakshatra} P${p.pada}${flags ? ' | ' + flags : ''}`);
+    lines.push(`${p.name}: ${p.sign} H${p.house} ${p.degreesInSign.toFixed(1)}° ${p.dignity ?? ''}`);
   }
   lines.push('');
-
   lines.push('## Houses');
   for (const h of context.houses) {
-    const occupants = h.occupants.length > 0 ? h.occupants.join(', ') : 'empty';
-    lines.push(`H${h.number} ${h.sign}: Lord=${h.lord}, Occupants=${occupants}`);
+    lines.push(`H${h.number} ${h.sign}: Lord=${h.lord}, Occupants=${h.occupants.join(', ') || 'empty'}`);
   }
   lines.push('');
-
-  lines.push('## Current Dasha Period');
-  lines.push(`Mahadasha: ${context.dashas.current.planet} (until ${formatDate(context.dashas.current.endsAt)})`);
+  lines.push(`## Dasha: ${context.dashas.current.planet} until ${context.dashas.current.endsAt.slice(0, 10)}`);
   if (context.dashas.antardasha) {
-    lines.push(`Antardasha: ${context.dashas.antardasha.planet} (until ${formatDate(context.dashas.antardasha.endsAt)})`);
+    lines.push(`Antardasha: ${context.dashas.antardasha.planet} until ${context.dashas.antardasha.endsAt.slice(0, 10)}`);
   }
-  if (context.dashas.pratyantar) {
-    lines.push(`Pratyantar: ${context.dashas.pratyantar.planet} (until ${formatDate(context.dashas.pratyantar.endsAt)})`);
-  }
-  lines.push('');
-
-  if (context.dashas.upcomingPeriods && context.dashas.upcomingPeriods.length > 0) {
-    lines.push('## Upcoming Dasha Periods (next 3 years)');
-    for (const p of context.dashas.upcomingPeriods) {
-      lines.push(`${p.level}: ${p.planet} (${formatDate(p.startsAt)} — ${formatDate(p.endsAt)})`);
-    }
-    lines.push('');
-  }
-
-  if (context.gochar && context.gochar.length > 0) {
-    lines.push('## Current Gochar (Transits)');
-    for (const g of context.gochar) {
-      const retro = g.isRetrograde ? ' ℞' : '';
-      lines.push(`${g.id}${retro}: ${g.sign} (${g.nakshatra}) → Natal H${g.natalHouse}`);
-    }
-    lines.push('');
-  }
-
-  if (context.yogas.length > 0) {
-    lines.push('## Active Yogas');
-    for (const y of context.yogas) {
-      lines.push(`${y.name}${y.strength ? ` (${y.strength})` : ''}`);
-    }
-    lines.push('');
-  }
-
-  if (context.doshas.length > 0) {
-    lines.push('## Detected Doshas');
-    for (const d of context.doshas) {
-      lines.push(`${d.name}${d.severity ? ` (${d.severity} severity)` : ''}`);
-    }
-    lines.push('');
-  }
-
-  if (context.aspects.length > 0) {
-    lines.push('## Key Aspects (Drishti)');
-    for (const a of context.aspects) {
-      const targets = a.targetPlanets.length > 0 ? ` aspecting ${a.targetPlanets.join(', ')}` : '';
-      lines.push(`${a.sourcePlanet} → H${a.targetHouse}${targets} (${a.strength})`);
-    }
-  }
-
   return lines.join('\n');
 }
 
@@ -317,18 +190,10 @@ export function buildPromptMessages(params: {
   question: string;
 }): AIMessage[] {
   const { systemPrompt, rulesPrompt, chartContext, conversationHistory, question } = params;
-
   const chartText = serializeChartContext(chartContext);
-
-  const messages: AIMessage[] = [
+  return [
     { role: 'system', content: `${systemPrompt}\n\n${rulesPrompt}\n\n${chartText}` },
     ...conversationHistory.slice(-10),
     { role: 'user', content: question },
   ];
-
-  return messages;
-}
-
-function formatDate(iso: string): string {
-  return iso.slice(0, 10);
 }
