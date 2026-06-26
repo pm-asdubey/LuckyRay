@@ -1,0 +1,22 @@
+{
+  "name": "luckyray",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LuckyRay — Premium AI-powered Jyotish application",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "start": "npm run start --workspace=apps/web",
+    "lint": "npm run lint --workspace=apps/web",
+    "typecheck": "npm run typecheck --workspace=apps/web",
+    "test": "npm run test --workspace=@luckyray/astronomy && npm run test --workspace=@luckyray/jyotish",
+    "clean": "find . -name 'node_modules' -type d -prune -exec rm -rf '{}' + && find . -name '.next' -type d -prune -exec rm -rf '{}' + && find . -name 'dist' -type d -prune -exec rm -rf '{}' +"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

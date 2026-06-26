@@ -1,0 +1,8 @@
+{
+  "name": "@luckyray/utils",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "description": "Shared utilities for LuckyRay (stub — utils live in apps/web/src/lib)"
+}

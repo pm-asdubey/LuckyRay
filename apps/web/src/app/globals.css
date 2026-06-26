@@ -1,0 +1,152 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    @apply border-surface-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-surface text-content font-sans;
+    min-height: 100vh;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-content-subtle;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-accent-muted text-content;
+  }
+
+  /* Focus visible */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-surface;
+  }
+}
+
+@layer components {
+  /* Skeleton shimmer */
+  .skeleton {
+    @apply bg-surface-elevated rounded;
+    background-image: linear-gradient(
+      90deg,
+      hsl(220 13% 11%) 25%,
+      hsl(220 13% 14%) 50%,
+      hsl(220 13% 11%) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  /* Chat markdown styles */
+  .prose-chat {
+    @apply text-content text-sm leading-relaxed;
+  }
+
+  .prose-chat p {
+    @apply mb-3 last:mb-0;
+  }
+
+  .prose-chat strong {
+    @apply text-content font-semibold;
+  }
+
+  .prose-chat em {
+    @apply text-content-muted italic;
+  }
+
+  .prose-chat ul {
+    @apply list-disc pl-5 mb-3 space-y-1;
+  }
+
+  .prose-chat ol {
+    @apply list-decimal pl-5 mb-3 space-y-1;
+  }
+
+  .prose-chat li {
+    @apply text-content;
+  }
+
+  .prose-chat h1, .prose-chat h2, .prose-chat h3 {
+    @apply text-content font-semibold mt-4 mb-2 first:mt-0;
+  }
+
+  .prose-chat h1 { @apply text-base; }
+  .prose-chat h2 { @apply text-sm; }
+  .prose-chat h3 { @apply text-sm; }
+
+  .prose-chat blockquote {
+    @apply border-l-2 border-accent pl-3 text-content-muted italic;
+  }
+
+  .prose-chat code {
+    @apply bg-surface-overlay text-accent text-xs px-1.5 py-0.5 rounded font-mono;
+  }
+
+  .prose-chat table {
+    @apply w-full text-xs border-collapse mb-3;
+  }
+
+  .prose-chat th {
+    @apply text-left text-content-muted font-medium pb-2 border-b border-surface-border;
+  }
+
+  .prose-chat td {
+    @apply py-1.5 pr-4 border-b border-surface-border last:pr-0;
+  }
+
+  /* Animation for streaming text */
+  .stream-cursor::after {
+    content: '▊';
+    @apply text-accent animate-pulse;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, hsl(258 84% 75%), hsl(43 80% 65%));
+  }
+
+  .border-gradient {
+    border-image: linear-gradient(135deg, hsl(258 84% 70%), hsl(43 80% 60%)) 1;
+  }
+}
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

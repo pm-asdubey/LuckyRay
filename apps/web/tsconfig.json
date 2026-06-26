@@ -1,0 +1,41 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@luckyray/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@luckyray/astronomy": [
+        "../../packages/astronomy/src/index.ts"
+      ],
+      "@luckyray/jyotish": [
+        "../../packages/jyotish/src/index.ts"
+      ],
+      "@luckyray/ai": [
+        "../../packages/ai/src/index.ts"
+      ],
+      "@luckyray/storage": [
+        "../../packages/storage/src/index.ts"
+      ]
+    },
+    "esModuleInterop": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

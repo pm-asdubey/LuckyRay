@@ -1,0 +1,145 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { buildSystemPrompt, buildRulesPrompt, serializeChartContext } from '@luckyray/ai';
+import type { AIMessage, ChartContext } from '@luckyray/shared';
+
+const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com/v1';
+const DEFAULT_MODEL = 'meta/llama-3.1-70b-instruct';
+const MAX_TOKENS = 2048;
+const TEMPERATURE = 0.7;
+
+export const runtime = 'edge';
+
+export async function POST(req: NextRequest) {
+  const apiKey = process.env.NVIDIA_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'NVIDIA_API_KEY is not configured' },
+      { status: 503 },
+    );
+  }
+
+  let body: {
+    messages: AIMessage[];
+    chartContext?: ChartContext;
+    model?: string;
+    stream?: boolean;
+  };
+
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const { messages, chartContext, model = DEFAULT_MODEL, stream = true } = body;
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
+  }
+
+  // Build system messages
+  const chartText = chartContext ? serializeChartContext(chartContext) : '';
+  const systemContent = [
+    buildSystemPrompt(),
+    buildRulesPrompt(),
+    chartText,
+  ].filter(Boolean).join('\n\n');
+
+  const apiMessages = [
+    { role: 'system', content: systemContent },
+    ...messages.map(m => ({ role: m.role, content: m.content })),
+  ];
+
+  try {
+    const response = await fetch(`${NVIDIA_API_BASE}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: apiMessages,
+        temperature: TEMPERATURE,
+        max_tokens: MAX_TOKENS,
+        stream,
+        top_p: 1,
+        frequency_penalty: 0,
+        presence_penalty: 0,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('NVIDIA API error:', response.status, errorText);
+      return NextResponse.json(
+        { error: `AI service error: ${response.status}` },
+        { status: response.status >= 500 ? 502 : response.status },
+      );
+    }
+
+    if (!stream) {
+      const data = await response.json();
+      return NextResponse.json(data);
+    }
+
+    // Stream response
+    const encoder = new TextEncoder();
+    const readable = new ReadableStream({
+      async start(controller) {
+        const reader = response.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed === 'data: [DONE]') continue;
+              if (trimmed.startsWith('data: ')) {
+                controller.enqueue(encoder.encode(trimmed + '\n\n'));
+              }
+            }
+          }
+
+          // Flush remaining buffer
+          if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
+            controller.enqueue(encoder.encode(buffer.trim() + '\n\n'));
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+        } catch (err) {
+          console.error('Stream error:', err);
+        } finally {
+          controller.close();
+          reader.releaseLock();
+        }
+      },
+    });
+
+    return new Response(readable, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+      },
+    });
+  } catch (err) {
+    console.error('Chat route error:', err);
+    return NextResponse.json(
+      { error: 'Failed to connect to AI service' },
+      { status: 502 },
+    );
+  }
+}

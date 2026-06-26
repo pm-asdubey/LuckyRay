@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@luckyray/shared": ["../shared/src/index.ts"],
+      "@luckyray/astronomy": ["../astronomy/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}
