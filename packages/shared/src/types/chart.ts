@@ -230,7 +230,12 @@ export interface KPPlanetInfo {
 
 export interface KPHouseSignificators {
   house: number;
-  significators: PlanetId[];
+  // 4 levels of KP signification (ordered strongest → weakest)
+  level1: PlanetId[];  // planets physically occupying the house (Placidus)
+  level2: PlanetId[];  // planets whose nakshatra lord is a level-1 occupant
+  level3: PlanetId[];  // sign lord of this house cusp
+  level4: PlanetId[];  // planets whose nakshatra lord is the sign lord
+  significators: PlanetId[];  // union of all 4 levels, deduped
 }
 
 export interface KPPredictedPeriod {
@@ -248,8 +253,13 @@ export interface KPEventAnalysis {
   relevantHouses: number[];
   primaryHouse: number;
   primaryCuspSubLord: PlanetId;
+  // All houses the sub-lord signifies (flat, any level)
   sublordSignifies: number[];
+  // Same data but with level info for each house
+  sublordSignifiesWithLevel: { house: number; level: 1 | 2 | 3 | 4 }[];
   isPromised: boolean;
+  // strong = Level 1/2 hits; moderate = Level 3/4 only; weak = partial
+  promiseStrength: 'strong' | 'moderate' | 'weak';
   promiseReason: string;
   significators: PlanetId[];
   predictedPeriods: KPPredictedPeriod[];

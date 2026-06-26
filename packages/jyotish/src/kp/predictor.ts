@@ -1,31 +1,27 @@
 /**
  * KP Event Predictor.
  *
- * Determines whether an event is "promised" in a chart and finds the
- * dasha periods most likely to trigger it.
+ * Promise Rule (KS Krishnamurti):
+ *   The sub lord of the primary cusp for the topic must signify the relevant
+ *   houses. Signification through Level 1 or 2 (occupancy / star of occupant)
+ *   is a STRONG promise; through Level 3 or 4 (sign lord / star of sign lord)
+ *   is a MODERATE promise. Fewer than minimumHits relevant houses = not promised.
  *
- * KP Promise Rule:
- *   An event is promised if the sub lord of the relevant cusp signifies the
- *   relevant houses. A sub lord is a "positive significator" if it signifies
- *   at least 2 of the relevant houses (or 1 if it's the primary house's cusp lord).
- *
- * KP Period Rule (Double Coincidence minimum):
- *   Event manifests when both Mahadasha and Antardasha lords are significators
- *   of the relevant houses.
- *
- * Reference: K.S. Krishnamurti, "Krishnamurti Padhdhati", Vols. 1-4
+ * Period Rule (Double Coincidence minimum):
+ *   Both Maha and Antar dasha lords must be significators of the relevant houses.
+ *   Confidence is higher when both signify through Level 1/2.
  */
 
 import type { PlanetId, KPEventAnalysis, KPTopicId, KPPredictedPeriod, KPHouseSignificators } from '@luckyray/shared';
 import type { DashaData } from '@luckyray/shared';
-import { buildPlanetSignificationMap } from './significators';
+import { buildPlanetSignificationDetail } from './significators';
 
-// ─── Topic Configuration ─────────────────────────────────────────────────
+// ─── Topic Configuration ─────────────────────────────────────────────────────
 
 interface TopicConfig {
   relevantHouses: number[];
   primaryHouse: number;
-  minimumHits: number; // minimum relevant houses sub lord must signify
+  minimumHits: number;  // sub-lord must signify this many relevant houses
 }
 
 const TOPIC_CONFIG: Record<KPTopicId, TopicConfig> = {
@@ -37,141 +33,170 @@ const TOPIC_CONFIG: Record<KPTopicId, TopicConfig> = {
   foreign:  { relevantHouses: [3, 9, 12],     primaryHouse: 9,  minimumHits: 2 },
 };
 
-// ─── Promise Detection ────────────────────────────────────────────────────
+// ─── Promise Detection ────────────────────────────────────────────────────────
+
+interface PromiseResult {
+  isPromised: boolean;
+  promiseStrength: 'strong' | 'moderate' | 'weak';
+  sublordSignifies: number[];
+  sublordSignifiesWithLevel: { house: number; level: 1 | 2 | 3 | 4 }[];
+  reason: string;
+}
 
 function detectPromise(
-  sublordOfPrimaryHouse: PlanetId,
+  subLord: PlanetId,
   relevantHouses: number[],
-  planetSignificationMap: Map<PlanetId, number[]>,
+  planetDetail: Map<PlanetId, { house: number; level: 1 | 2 | 3 | 4 }[]>,
   minimumHits: number,
-): { isPromised: boolean; signifies: number[]; reason: string } {
-  const signifies = planetSignificationMap.get(sublordOfPrimaryHouse) ?? [];
-  const hitsInRelevant = signifies.filter(h => relevantHouses.includes(h));
+): PromiseResult {
+  const detail = planetDetail.get(subLord) ?? [];
+  const allHousesSignified = [...new Set(detail.map(d => d.house))];
 
-  if (hitsInRelevant.length >= minimumHits) {
+  const relevantDetail = detail.filter(d => relevantHouses.includes(d.house));
+  const uniqueRelevantHouses = [...new Set(relevantDetail.map(d => d.house))];
+
+  // Level 1+2 are "strong" signification (direct occupancy chain)
+  const strongDetail = relevantDetail.filter(d => d.level <= 2);
+  const uniqueStrongHouses = [...new Set(strongDetail.map(d => d.house))];
+
+  const houseStr = (houses: number[]) => houses.map(h => `H${h}`).join(', ');
+  const levelStr = (d: { house: number; level: number }[]) =>
+    d.map(x => `H${x.house}(L${x.level})`).join(', ');
+
+  if (uniqueStrongHouses.length >= minimumHits) {
     return {
       isPromised: true,
-      signifies,
-      reason: `Sub lord ${sublordOfPrimaryHouse} signifies ${hitsInRelevant.join(', ')} — ${hitsInRelevant.length}/${relevantHouses.length} relevant houses`,
+      promiseStrength: 'strong',
+      sublordSignifies: allHousesSignified,
+      sublordSignifiesWithLevel: detail,
+      reason: `${subLord} signifies ${levelStr(strongDetail)} via Level 1/2 (occupancy chain) — strong promise for ${houseStr(uniqueStrongHouses)}`,
     };
   }
 
-  // Partial promise: sub lord signifies at least 1 relevant house
-  if (hitsInRelevant.length === 1) {
+  if (uniqueRelevantHouses.length >= minimumHits) {
+    return {
+      isPromised: true,
+      promiseStrength: 'moderate',
+      sublordSignifies: allHousesSignified,
+      sublordSignifiesWithLevel: detail,
+      reason: `${subLord} signifies ${levelStr(relevantDetail)} via Level 3/4 (sign lord chain) — moderate promise for ${houseStr(uniqueRelevantHouses)}`,
+    };
+  }
+
+  if (uniqueRelevantHouses.length === 1) {
     return {
       isPromised: false,
-      signifies,
-      reason: `Sub lord ${sublordOfPrimaryHouse} weakly signifies only H${hitsInRelevant[0]} — insufficient for full promise (needs ${minimumHits} of ${relevantHouses.join(',')})`,
+      promiseStrength: 'weak',
+      sublordSignifies: allHousesSignified,
+      sublordSignifiesWithLevel: detail,
+      reason: `${subLord} only signifies ${levelStr(relevantDetail)} — needs ${minimumHits} of ${houseStr(relevantHouses)} for a promise`,
     };
   }
 
-  // Denial: sub lord signifies opposing/denying houses
-  // Houses 8, 12 deny marriage (for 7th house topic); etc.
   return {
     isPromised: false,
-    signifies,
-    reason: `Sub lord ${sublordOfPrimaryHouse} does not signify the required houses (${relevantHouses.join(', ')}) — event not clearly promised`,
+    promiseStrength: 'weak',
+    sublordSignifies: allHousesSignified,
+    sublordSignifiesWithLevel: detail,
+    reason: `${subLord} does not signify the required houses (${houseStr(relevantHouses)}) — event not promised in this chart`,
   };
 }
 
-// ─── Period Finder ────────────────────────────────────────────────────────
+// ─── Confidence Rating ────────────────────────────────────────────────────────
 
 function rateConfidence(
-  mahaSignifies: number[],
-  antarSignifies: number[],
-  relevantHouses: number[],
+  mahaStrongHits: number,
+  antarStrongHits: number,
+  mahaTotalHits: number,
+  antarTotalHits: number,
 ): 'high' | 'medium' | 'low' {
-  const mahaHits = mahaSignifies.filter(h => relevantHouses.includes(h)).length;
-  const antarHits = antarSignifies.filter(h => relevantHouses.includes(h)).length;
-  const totalRequired = relevantHouses.length;
-
-  if (mahaHits >= 2 && antarHits >= 2) return 'high';
-  if (mahaHits >= 1 && antarHits >= 2) return 'medium';
-  if (mahaHits >= 2 && antarHits >= 1) return 'medium';
+  if (mahaStrongHits >= 2 && antarStrongHits >= 2) return 'high';
+  if (mahaStrongHits >= 1 && antarTotalHits >= 2) return 'medium';
+  if (mahaTotalHits >= 2 && antarTotalHits >= 2) return 'medium';
   return 'low';
 }
 
+// ─── Period Finder ────────────────────────────────────────────────────────────
+
 function findFavorablePeriods(
-  significators: PlanetId[],
-  planetSignificationMap: Map<PlanetId, number[]>,
+  topicSignificators: PlanetId[],
+  planetDetail: Map<PlanetId, { house: number; level: 1 | 2 | 3 | 4 }[]>,
   dashaData: DashaData,
   relevantHouses: number[],
   topicLabel: string,
-  maxPeriods: number = 4,
+  maxPeriods: number = 5,
 ): KPPredictedPeriod[] {
   const now = new Date();
   const periods: KPPredictedPeriod[] = [];
 
   for (const maha of dashaData.allPeriods) {
-    const mahaEnd = new Date(maha.endDate);
-    if (mahaEnd <= now) continue;
+    if (new Date(maha.endDate) <= now) continue;
     if (periods.length >= maxPeriods) break;
+    if (!topicSignificators.includes(maha.planet)) continue;
 
-    const mahaIsSig = significators.includes(maha.planet);
-    const mahaSignifies = planetSignificationMap.get(maha.planet) ?? [];
+    const mahaDetail = planetDetail.get(maha.planet) ?? [];
+    const mahaRelevant = mahaDetail.filter(d => relevantHouses.includes(d.house));
+    const mahaStrong = mahaRelevant.filter(d => d.level <= 2);
 
-    if (!mahaIsSig) continue;
-
-    // Check antardasha periods
     for (const antar of maha.antardasha ?? []) {
-      const antarEnd = new Date(antar.endDate);
-      const antarStart = new Date(antar.startDate);
-      if (antarEnd <= now) continue;
+      if (new Date(antar.endDate) <= now) continue;
+      if (!topicSignificators.includes(antar.planet)) continue;
 
-      const antarIsSig = significators.includes(antar.planet);
-      if (!antarIsSig) continue;
+      const antarDetail = planetDetail.get(antar.planet) ?? [];
+      const antarRelevant = antarDetail.filter(d => relevantHouses.includes(d.house));
+      const antarStrong = antarRelevant.filter(d => d.level <= 2);
 
-      const antarSignifies = planetSignificationMap.get(antar.planet) ?? [];
-      const confidence = rateConfidence(mahaSignifies, antarSignifies, relevantHouses);
+      const confidence = rateConfidence(
+        [...new Set(mahaStrong.map(d => d.house))].length,
+        [...new Set(antarStrong.map(d => d.house))].length,
+        [...new Set(mahaRelevant.map(d => d.house))].length,
+        [...new Set(antarRelevant.map(d => d.house))].length,
+      );
 
-      const period: KPPredictedPeriod = {
+      const fmtHouses = (d: { house: number; level: number }[]) =>
+        d.length ? d.map(x => `H${x.house}(L${x.level})`).join(', ') : 'none';
+
+      periods.push({
         mahadasha: maha.planet,
         antardasha: antar.planet,
-        startDate: antarStart.toISOString().slice(0, 10),
-        endDate: antarEnd.toISOString().slice(0, 10),
+        startDate: new Date(antar.startDate).toISOString().slice(0, 10),
+        endDate: new Date(antar.endDate).toISOString().slice(0, 10),
         confidence,
-        reason: `${maha.planet} MD (H${mahaSignifies.filter(h => relevantHouses.includes(h)).join(',')}) + ${antar.planet} AD (H${antarSignifies.filter(h => relevantHouses.includes(h)).join(',')}) — double coincidence for ${topicLabel}`,
-      };
-      periods.push(period);
+        reason: `${maha.planet} MD [${fmtHouses(mahaRelevant)}] + ${antar.planet} AD [${fmtHouses(antarRelevant)}] — double coincidence (${topicLabel})`,
+      });
 
       if (periods.length >= maxPeriods) break;
     }
   }
 
-  // Sort by confidence: high > medium > low
   const order = { high: 0, medium: 1, low: 2 };
   return periods.sort((a, b) => order[a.confidence] - order[b.confidence]);
 }
 
-// ─── Public API ───────────────────────────────────────────────────────────
+// ─── Public API ───────────────────────────────────────────────────────────────
 
 export function analyzeKPEvent(
   topic: KPTopicId,
-  cuspSubLords: PlanetId[],  // index 0 = cusp 1 sub lord, ..., index 11 = cusp 12
+  cuspSubLords: PlanetId[],
   significators: KPHouseSignificators[],
   dashaData: DashaData,
 ): KPEventAnalysis {
   const config = TOPIC_CONFIG[topic];
-  const planetSigMap = buildPlanetSignificationMap(significators);
+  const planetDetail = buildPlanetSignificationDetail(significators);
 
   const primaryCuspSubLord = cuspSubLords[config.primaryHouse - 1]!;
-  const { isPromised, signifies, reason } = detectPromise(
-    primaryCuspSubLord,
-    config.relevantHouses,
-    planetSigMap,
-    config.minimumHits,
-  );
+  const promise = detectPromise(primaryCuspSubLord, config.relevantHouses, planetDetail, config.minimumHits);
 
-  // Collect significators: planets that signify at least 2 relevant houses
+  // All planets that signify ≥1 relevant house at any level
   const topicSignificators: PlanetId[] = [];
-  planetSigMap.forEach((houses, planet) => {
-    const hitsInRelevant = houses.filter(h => config.relevantHouses.includes(h));
-    if (hitsInRelevant.length >= 1) topicSignificators.push(planet);
+  planetDetail.forEach((detail, planet) => {
+    if (detail.some(d => config.relevantHouses.includes(d.house))) {
+      topicSignificators.push(planet);
+    }
   });
 
-  // Only predict periods if event is promised
-  const predictedPeriods = isPromised
-    ? findFavorablePeriods(topicSignificators, planetSigMap, dashaData, config.relevantHouses, topic)
+  const predictedPeriods = promise.isPromised
+    ? findFavorablePeriods(topicSignificators, planetDetail, dashaData, config.relevantHouses, topic)
     : [];
 
   return {
@@ -179,9 +204,11 @@ export function analyzeKPEvent(
     relevantHouses: config.relevantHouses,
     primaryHouse: config.primaryHouse,
     primaryCuspSubLord,
-    sublordSignifies: signifies,
-    isPromised,
-    promiseReason: reason,
+    sublordSignifies: promise.sublordSignifies,
+    sublordSignifiesWithLevel: promise.sublordSignifiesWithLevel,
+    isPromised: promise.isPromised,
+    promiseStrength: promise.promiseStrength,
+    promiseReason: promise.reason,
     significators: topicSignificators,
     predictedPeriods,
   };

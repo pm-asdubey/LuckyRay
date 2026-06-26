@@ -11,21 +11,21 @@ interface ChatInputProps {
   isStreaming: boolean;
   disabled?: boolean;
   placeholder?: string;
+  suggestions?: string[];
 }
 
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS = [
   'What career paths suit my chart?',
-  'How is my current dasha influencing life?',
+  'How does my current dasha influence daily life?',
   'Describe my personality from the ascendant.',
-  'What do my yogas indicate?',
-  'When is a good period for relationships?',
 ];
 
-export function ChatInput({ onSend, onAbort, isStreaming, disabled, placeholder }: ChatInputProps) {
+export function ChatInput({ onSend, onAbort, isStreaming, disabled, placeholder, suggestions }: ChatInputProps) {
   const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-resize textarea
+  const chips = suggestions && suggestions.length > 0 ? suggestions.slice(0, 3) : DEFAULT_SUGGESTIONS;
+
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -38,7 +38,6 @@ export function ChatInput({ onSend, onAbort, isStreaming, disabled, placeholder 
     if (!trimmed || isStreaming || disabled) return;
     setText('');
     onSend(trimmed);
-    // Reset height
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
 
@@ -72,12 +71,7 @@ export function ChatInput({ onSend, onAbort, isStreaming, disabled, placeholder 
           aria-label="Message input"
         />
         {isStreaming ? (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={onAbort}
-            aria-label="Stop generation"
-          >
+          <Button variant="primary" size="sm" onClick={onAbort} aria-label="Stop generation">
             <Square size={14} />
           </Button>
         ) : (
@@ -93,10 +87,10 @@ export function ChatInput({ onSend, onAbort, isStreaming, disabled, placeholder 
         )}
       </div>
 
-      {/* Suggestion chips (shown when empty) */}
+      {/* Suggestion chips — shown when input is empty and not streaming */}
       {!text && !isStreaming && (
         <div className="flex flex-wrap gap-1.5">
-          {SUGGESTIONS.slice(0, 3).map(s => (
+          {chips.map(s => (
             <button
               key={s}
               onClick={() => onSend(s)}

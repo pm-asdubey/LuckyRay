@@ -342,8 +342,9 @@ export default function ChartPage() {
 // ─── KP View ─────────────────────────────────────────────────────────────────
 
 const PROMISE_COLORS = {
-  true:  'text-green-400 border-green-900/40 bg-green-950/20',
-  false: 'text-red-400 border-red-900/40 bg-red-950/20',
+  strong:   'text-green-400 border-green-900/40 bg-green-950/20',
+  moderate: 'text-amber-400 border-amber-900/40 bg-amber-950/20',
+  weak:     'text-red-400 border-red-900/40 bg-red-950/20',
 };
 
 const CONFIDENCE_COLORS = {
@@ -351,6 +352,13 @@ const CONFIDENCE_COLORS = {
   medium: 'bg-amber-900/30 text-amber-400 border border-amber-800/30',
   low:    'bg-surface-elevated text-content-muted border border-surface-border',
 };
+
+const LEVEL_COLORS = [
+  'text-violet-400',   // L1
+  'text-blue-400',     // L2
+  'text-teal-400',     // L3
+  'text-slate-400',    // L4
+];
 
 const TOPIC_LABELS: Record<string, string> = {
   career:   'Career & Profession',
@@ -363,6 +371,7 @@ const TOPIC_LABELS: Record<string, string> = {
 
 function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefined }) {
   const [openTopic, setOpenTopic] = useState<string | null>('career');
+  const [sigView, setSigView] = useState<'by-house' | 'by-planet'>('by-house');
 
   if (!kp) {
     return (
@@ -372,12 +381,27 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
     );
   }
 
+  // Build planet → [{house, level}] map for the "by planet" view
+  const planetDetailMap = new Map<string, { house: number; level: 1|2|3|4 }[]>();
+  for (const hs of kp.significators) {
+    const add = (p: string, lvl: 1|2|3|4) => {
+      const arr = planetDetailMap.get(p) ?? [];
+      arr.push({ house: hs.house, level: lvl });
+      planetDetailMap.set(p, arr);
+    };
+    hs.level1.forEach(p => add(p, 1));
+    hs.level2.forEach(p => add(p, 2));
+    hs.level3.forEach(p => add(p, 3));
+    hs.level4.forEach(p => add(p, 4));
+  }
+
   return (
     <div className="space-y-6 max-w-3xl">
       {/* System note */}
       <p className="text-2xs text-content-subtle bg-surface-elevated rounded-lg px-3 py-2 border border-surface-border">
-        KP uses <strong className="text-content-muted">Placidus cusps</strong> (not Whole Sign). Planet house positions here may differ from the main chart.
-        Sub lords are computed from the Vimshottari table — deterministically, not by AI.
+        KP uses <strong className="text-content-muted">Placidus cusps</strong> (not Whole Sign).
+        Planet house positions here may differ from the main chart.
+        Sub lords are computed deterministically from the Vimshottari table, not by AI.
       </p>
 
       {/* House Cusps */}
@@ -397,9 +421,7 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
                   </span>
                   <span className="text-xs font-medium text-content">{cusp.sign} {deg}°{String(min).padStart(2,'0')}'</span>
                 </div>
-                <div className="text-2xs text-content-subtle leading-tight">
-                  {cusp.nakshatra}
-                </div>
+                <div className="text-2xs text-content-subtle leading-tight">{cusp.nakshatra}</div>
                 <div className="text-2xs text-content-muted leading-tight">
                   ⋆ {cusp.nakshatraLord} &nbsp;·&nbsp; Sub: {cusp.subLord}
                 </div>
@@ -409,27 +431,115 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
         </div>
       </section>
 
+      {/* 4-Level Significator Table */}
+      <section>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
+            House Significators — 4-Level KP System
+          </h3>
+          <div className="flex rounded-lg border border-surface-border overflow-hidden text-2xs">
+            {(['by-house', 'by-planet'] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => setSigView(v)}
+                className={cn(
+                  'px-2.5 py-1 transition-colors',
+                  sigView === v ? 'bg-accent-subtle text-accent' : 'text-content-muted hover:text-content',
+                )}
+              >
+                {v === 'by-house' ? 'By house' : 'By planet'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Level legend */}
+        <div className="flex flex-wrap gap-3 mb-3 text-2xs">
+          {[
+            ['L1', 'Occupies house', 0],
+            ['L2', 'Star of occupant', 1],
+            ['L3', 'Sign lord of cusp', 2],
+            ['L4', 'Star of sign lord', 3],
+          ].map(([label, desc, idx]) => (
+            <span key={label as string} className="flex items-center gap-1">
+              <span className={cn('font-bold', LEVEL_COLORS[idx as number])}>{label}</span>
+              <span className="text-content-subtle">{desc}</span>
+            </span>
+          ))}
+        </div>
+
+        {sigView === 'by-house' ? (
+          <div className="rounded-lg border border-surface-border overflow-hidden">
+            <table className="w-full text-2xs">
+              <thead>
+                <tr className="border-b border-surface-border bg-surface-elevated">
+                  <th className="text-left px-3 py-2 text-content-muted font-medium w-10">H</th>
+                  <th className={cn('text-left px-3 py-2 font-medium', LEVEL_COLORS[0])}>L1 Occupants</th>
+                  <th className={cn('text-left px-3 py-2 font-medium', LEVEL_COLORS[1])}>L2 Star of occ.</th>
+                  <th className={cn('text-left px-3 py-2 font-medium', LEVEL_COLORS[2])}>L3 Sign lord</th>
+                  <th className={cn('text-left px-3 py-2 font-medium', LEVEL_COLORS[3])}>L4 Star of lord</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kp.significators.map((hs, i) => (
+                  <tr key={hs.house} className={cn('border-b border-surface-border/50', i % 2 === 1 && 'bg-surface-elevated/30')}>
+                    <td className="px-3 py-1.5 font-bold text-accent">{hs.house}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[0])}>{hs.level1.join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[1])}>{hs.level2.join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[2])}>{hs.level3.join(', ') || '—'}</td>
+                    <td className={cn('px-3 py-1.5', LEVEL_COLORS[3])}>{hs.level4.join(', ') || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-lg border border-surface-border overflow-hidden">
+            <table className="w-full text-2xs">
+              <thead>
+                <tr className="border-b border-surface-border bg-surface-elevated">
+                  <th className="text-left px-3 py-2 text-content-muted font-medium">Planet</th>
+                  <th className="text-left px-3 py-2 text-content-muted font-medium">Signifies (house · level)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(planetDetailMap.entries()).map(([planet, detail], i) => (
+                  <tr key={planet} className={cn('border-b border-surface-border/50', i % 2 === 1 && 'bg-surface-elevated/30')}>
+                    <td className="px-3 py-1.5 font-semibold text-content">{planet}</td>
+                    <td className="px-3 py-1.5">
+                      <span className="flex flex-wrap gap-1">
+                        {detail.sort((a,b) => a.house - b.house).map((d, j) => (
+                          <span key={j} className={cn('rounded px-1 py-0.5 font-mono', LEVEL_COLORS[d.level - 1])}>
+                            H{d.house}<span className="opacity-60">·L{d.level}</span>
+                          </span>
+                        ))}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       {/* Ruling Planets */}
       <section>
         <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider mb-2">
           Ruling Planets
         </h3>
         <div className="flex flex-wrap gap-2 text-xs text-content-muted">
-          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
-            Asc Star Lord: <strong className="text-content">{kp.rulingPlanets.ascStarLord}</strong>
-          </span>
-          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
-            Asc Sub Lord: <strong className="text-content">{kp.rulingPlanets.ascSubLord}</strong>
-          </span>
-          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
-            Moon Star: <strong className="text-content">{kp.rulingPlanets.moonStarLord}</strong>
-          </span>
-          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
-            Moon Sub: <strong className="text-content">{kp.rulingPlanets.moonSubLord}</strong>
-          </span>
-          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
-            Day Lord: <strong className="text-content">{kp.rulingPlanets.dayLord}</strong>
-          </span>
+          {[
+            ['Asc Star Lord', kp.rulingPlanets.ascStarLord],
+            ['Asc Sub Lord', kp.rulingPlanets.ascSubLord],
+            ['Moon Star', kp.rulingPlanets.moonStarLord],
+            ['Moon Sub', kp.rulingPlanets.moonSubLord],
+            ['Day Lord', kp.rulingPlanets.dayLord],
+          ].map(([label, value]) => (
+            <span key={label} className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
+              {label}: <strong className="text-content">{value}</strong>
+            </span>
+          ))}
         </div>
       </section>
 
@@ -439,88 +549,105 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
           Event Promise Analysis
         </h3>
         <p className="text-2xs text-content-subtle mb-3">
-          A promise exists when the sub lord of the primary cusp signifies the relevant houses.
-          Predicted periods are computed deterministically — no AI required.
+          Promise is determined by whether the sub lord of the primary cusp signifies the
+          relevant houses through Level 1/2 (strong) or Level 3/4 (moderate).
+          Periods are computed deterministically — no AI required.
         </p>
         <div className="space-y-2">
-          {kp.events.map(ev => (
-            <div key={ev.topic} className="rounded-xl border border-surface-border overflow-hidden">
-              {/* Header row */}
-              <button
-                className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-elevated/50 transition-colors"
-                onClick={() => setOpenTopic(openTopic === ev.topic ? null : ev.topic)}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span className={cn(
-                    'inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold border',
-                    ev.isPromised ? PROMISE_COLORS.true : PROMISE_COLORS.false,
-                  )}>
-                    {ev.isPromised ? 'PROMISED' : 'UNCLEAR'}
-                  </span>
-                  <span className="text-sm font-medium text-content">
-                    {TOPIC_LABELS[ev.topic] ?? ev.topic}
-                  </span>
-                  <span className="text-2xs text-content-subtle">
-                    H{ev.relevantHouses.join(', H')}
-                  </span>
-                </div>
-                <span className="text-content-subtle text-xs">
-                  {openTopic === ev.topic ? '▲' : '▼'}
-                </span>
-              </button>
-
-              {/* Expanded */}
-              {openTopic === ev.topic && (
-                <div className="border-t border-surface-border px-4 py-4 space-y-4 bg-surface">
-                  {/* Promise detail */}
-                  <div className="space-y-1">
-                    <div className="text-2xs text-content-muted">
-                      <strong>H{ev.primaryHouse} Sub Lord:</strong> {ev.primaryCuspSubLord}
-                      {' · Signifies: '}
-                      {ev.sublordSignifies.length > 0 ? ev.sublordSignifies.map(h => `H${h}`).join(', ') : 'none'}
-                    </div>
-                    <div className="text-2xs text-content-muted">{ev.promiseReason}</div>
-                    <div className="text-2xs text-content-subtle">
-                      Significators: {ev.significators.join(' · ') || '—'}
-                    </div>
+          {kp.events.map(ev => {
+            const strength = ev.isPromised ? ev.promiseStrength : 'weak';
+            const promiseLabel = ev.isPromised
+              ? ev.promiseStrength === 'strong' ? 'STRONG' : 'MODERATE'
+              : 'NOT PROMISED';
+            return (
+              <div key={ev.topic} className="rounded-xl border border-surface-border overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-elevated/50 transition-colors"
+                  onClick={() => setOpenTopic(openTopic === ev.topic ? null : ev.topic)}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className={cn(
+                      'inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold border',
+                      PROMISE_COLORS[strength],
+                    )}>
+                      {promiseLabel}
+                    </span>
+                    <span className="text-sm font-medium text-content">
+                      {TOPIC_LABELS[ev.topic] ?? ev.topic}
+                    </span>
+                    <span className="text-2xs text-content-subtle">
+                      H{ev.relevantHouses.join(', H')}
+                    </span>
                   </div>
+                  <span className="text-content-subtle text-xs">
+                    {openTopic === ev.topic ? '▲' : '▼'}
+                  </span>
+                </button>
 
-                  {/* Predicted periods */}
-                  {ev.predictedPeriods.length > 0 ? (
-                    <div className="space-y-2">
-                      <div className="text-2xs font-semibold text-content-muted uppercase tracking-wider">
-                        Predicted Favorable Periods
+                {openTopic === ev.topic && (
+                  <div className="border-t border-surface-border px-4 py-4 space-y-4 bg-surface">
+                    {/* Sub lord detail */}
+                    <div className="space-y-1.5 text-2xs">
+                      <div className="text-content-muted">
+                        <span className="text-content-subtle">H{ev.primaryHouse} Sub Lord: </span>
+                        <strong className="text-content">{ev.primaryCuspSubLord}</strong>
                       </div>
-                      {ev.predictedPeriods.map((period, i) => (
-                        <div key={i} className="rounded-lg border border-surface-border p-3 space-y-1 bg-surface-elevated">
-                          <div className="flex items-center gap-2">
-                            <span className={cn('text-2xs font-semibold rounded px-1.5 py-0.5', CONFIDENCE_COLORS[period.confidence])}>
-                              {period.confidence.toUpperCase()}
-                            </span>
-                            <span className="text-xs font-semibold text-content">
-                              {period.mahadasha} MD / {period.antardasha} AD
-                            </span>
-                          </div>
-                          <div className="text-2xs text-content-subtle">
-                            {period.startDate} — {period.endDate}
-                          </div>
-                          <div className="text-2xs text-content-muted leading-relaxed">
-                            {period.reason}
-                          </div>
+                      <div className="text-content-muted">
+                        <span className="text-content-subtle">Signifies: </span>
+                        {ev.sublordSignifiesWithLevel.length > 0
+                          ? ev.sublordSignifiesWithLevel
+                              .sort((a, b) => a.house - b.house)
+                              .map((d, i) => (
+                                <span key={i} className={cn('mr-1.5', LEVEL_COLORS[d.level - 1])}>
+                                  H{d.house}<span className="opacity-60">·L{d.level}</span>
+                                </span>
+                              ))
+                          : <span className="text-content-subtle">none</span>
+                        }
+                      </div>
+                      <div className="text-content-muted leading-relaxed">{ev.promiseReason}</div>
+                      <div className="text-content-subtle">
+                        Topic significators: {ev.significators.join(' · ') || '—'}
+                      </div>
+                    </div>
+
+                    {/* Predicted periods */}
+                    {ev.predictedPeriods.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="text-2xs font-semibold text-content-muted uppercase tracking-wider">
+                          Predicted Favorable Periods
                         </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-2xs text-content-muted italic">
-                      {ev.isPromised
-                        ? 'No upcoming favorable periods found in visible dasha span.'
-                        : 'Event not clearly promised — no periods predicted.'}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                        {ev.predictedPeriods.map((period, i) => (
+                          <div key={i} className="rounded-lg border border-surface-border p-3 space-y-1 bg-surface-elevated">
+                            <div className="flex items-center gap-2">
+                              <span className={cn('text-2xs font-semibold rounded px-1.5 py-0.5', CONFIDENCE_COLORS[period.confidence])}>
+                                {period.confidence.toUpperCase()}
+                              </span>
+                              <span className="text-xs font-semibold text-content">
+                                {period.mahadasha} MD / {period.antardasha} AD
+                              </span>
+                            </div>
+                            <div className="text-2xs text-content-subtle">
+                              {period.startDate} — {period.endDate}
+                            </div>
+                            <div className="text-2xs text-content-muted leading-relaxed">
+                              {period.reason}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-2xs text-content-muted italic">
+                        {ev.isPromised
+                          ? 'No upcoming favorable periods found in visible dasha span.'
+                          : 'Event not clearly promised — no periods predicted.'}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>

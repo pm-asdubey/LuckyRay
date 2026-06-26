@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, LayoutDashboard } from 'lucide-react';
-import { getProfile, getLatestChart, createConversation, getConversation, addMessage, getMessagesForConversation, updateConversation } from '@luckyray/storage';
+import { ArrowLeft, LayoutDashboard, Plus } from 'lucide-react';
+import {
+  getProfile, getLatestChart,
+  createConversation, getConversationsForProfile,
+  addMessage, getMessagesForConversation, updateConversation,
+} from '@luckyray/storage';
 import type { Profile, StoredChart, Message, Conversation } from '@luckyray/shared';
 import { buildChartContext } from '@luckyray/ai';
 import { computeCurrentGochar } from '@luckyray/jyotish';
@@ -18,6 +22,65 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/store/app-store';
 import { useAIChat } from '@/hooks/use-ai-chat';
 import { cn } from '@/lib/utils';
+
+// ─── Dynamic Suggestions ──────────────────────────────────────────────────────
+
+const BASE_SUGGESTIONS = [
+  'What career paths suit my chart?',
+  'How does my current dasha influence daily life?',
+  'Describe my personality from the ascendant.',
+  'What do my yogas indicate?',
+  'When is a good period for relationships?',
+  'What does my Moon placement say about my mind?',
+  'How is my 10th house placed for career?',
+  'What upcoming transits should I watch?',
+];
+
+const TOPIC_SUGGESTIONS: Record<string, string[]> = {
+  career:     ['Which dasha is best for a job change?', 'How strong is my 10th house lord?', 'What planets support professional growth?'],
+  marriage:   ['When is a favorable period for marriage?', 'What does my 7th house say about partnership?', 'How is Venus placed in my chart?'],
+  wealth:     ['Which period is best for financial growth?', 'What yogas affect my wealth?', 'How is my 11th house lord placed?'],
+  health:     ['What does my 6th house indicate about health?', 'Which planets affect my vitality?', 'How is my lagna lord placed?'],
+  moon:       ['How does my Moon nakshatra shape my personality?', 'What does my Moon sign indicate emotionally?'],
+  saturn:     ['How is my Saturn influencing current events?', 'What does my Sade Sati indicate?'],
+  jupiter:    ['How is Jupiter influencing my chart right now?', 'What does my Jupiter dasha indicate?'],
+  dasha:      ['What is the theme of my current Mahadasha?', 'When does my next Antardasha begin?'],
+  transit:    ['Which current transits are most significant?', 'How does the Saturn transit affect me?'],
+};
+
+function getDynamicSuggestions(lastAssistantMessage?: string): string[] {
+  if (!lastAssistantMessage) return BASE_SUGGESTIONS.slice(0, 3);
+
+  const lower = lastAssistantMessage.toLowerCase();
+  const picked: string[] = [];
+
+  const topicChecks: [string, string[]][] = [
+    ['career|profession|10th|job|work', TOPIC_SUGGESTIONS.career!],
+    ['marriage|partner|7th|relationship|venus', TOPIC_SUGGESTIONS.marriage!],
+    ['wealth|finance|money|11th|2nd', TOPIC_SUGGESTIONS.wealth!],
+    ['health|vitality|6th|illness', TOPIC_SUGGESTIONS.health!],
+    ['moon|mind|emotion|nakshatra', TOPIC_SUGGESTIONS.moon!],
+    ['saturn|sade sati|shani', TOPIC_SUGGESTIONS.saturn!],
+    ['jupiter|guru|dasha', TOPIC_SUGGESTIONS.jupiter!],
+    ['mahadasha|antardasha|dasha period', TOPIC_SUGGESTIONS.dasha!],
+    ['transit|gochar|current', TOPIC_SUGGESTIONS.transit!],
+  ];
+
+  for (const [pattern, suggs] of topicChecks) {
+    if (picked.length >= 3) break;
+    if (new RegExp(pattern).test(lower)) {
+      suggs.forEach(s => { if (picked.length < 3 && !picked.includes(s)) picked.push(s); });
+    }
+  }
+
+  if (picked.length < 3) {
+    BASE_SUGGESTIONS.forEach(s => { if (picked.length < 3 && !picked.includes(s)) picked.push(s); });
+  }
+
+  return picked.slice(0, 3);
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
   const params = useParams<{ profileId: string }>();
@@ -35,7 +98,6 @@ export default function ChatPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming } = useAppStore();
 
-  // Build context once chart is loaded, including current transits
   const chartContext = storedChart?.chart
     ? buildChartContext(
         storedChart.chart,
@@ -43,6 +105,12 @@ export default function ChatPage() {
         computeCurrentGochar(storedChart.chart.ascendant.signIndex).planets,
       )
     : undefined;
+
+  // Dynamic suggestions based on the last AI message
+  const dynamicSuggestions = useMemo(() => {
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+    return getDynamicSuggestions(lastAssistant?.content);
+  }, [messages]);
 
   const { send, abort } = useAIChat({
     chartContext,
@@ -76,7 +144,20 @@ export default function ChatPage() {
     },
   });
 
-  const load = useCallback(async () => {
+  const createNewConversation = useCallback(async (profileId: string): Promise<Conversation> => {
+    const now = new Date().toISOString();
+    const conv: Conversation = {
+      id: crypto.randomUUID(),
+      profileId,
+      title: `Chart reading — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await createConversation(conv);
+    return conv;
+  }, []);
+
+  const load = useCallback(async (forceNew = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -88,34 +169,35 @@ export default function ChatPage() {
       setProfile(p);
       setActiveProfile(p);
 
-      if (c) {
-        setStoredChart(c);
-        setActiveChart(c);
+      if (c) { setStoredChart(c); setActiveChart(c); }
+
+      let conv: Conversation;
+      let msgs: Message[] = [];
+
+      if (!forceNew) {
+        const existing = await getConversationsForProfile(p.id);
+        if (existing.length > 0) {
+          conv = existing[0]!;
+          msgs = await getMessagesForConversation(conv.id);
+        } else {
+          conv = await createNewConversation(p.id);
+        }
+      } else {
+        conv = await createNewConversation(p.id);
       }
 
-      // Create or get latest conversation
-      const now = new Date().toISOString();
-      const convId = crypto.randomUUID();
-      const newConv: Conversation = {
-        id: convId,
-        profileId: p.id,
-        title: `Chart reading – ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-        createdAt: now,
-        updatedAt: now,
-      };
-      await createConversation(newConv);
-      setConversation(newConv);
-      setActiveConversation(newConv);
+      setConversation(conv);
+      setMessages(msgs);
+      setActiveConversation(conv);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
       setLoading(false);
     }
-  }, [params.profileId, setActiveProfile, setActiveChart, setActiveConversation]);
+  }, [params.profileId, setActiveProfile, setActiveChart, setActiveConversation, createNewConversation]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingText]);
@@ -145,10 +227,9 @@ export default function ChatPage() {
     setIsStreaming(true);
     setStoreStreaming(true);
 
-    // Build messages array for API (exclude system messages)
     const apiMessages = updatedMessages
       .filter(m => m.role !== 'system')
-      .slice(-20) // Send last 20 messages for context
+      .slice(-20)
       .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
     send(apiMessages);
@@ -159,7 +240,6 @@ export default function ChatPage() {
     setIsStreaming(false);
     setStoreStreaming(false);
     if (streamingText) {
-      // Save partial response
       const partial = streamingText + ' _(response stopped)_';
       if (conversation) {
         const msg: Message = {
@@ -175,6 +255,8 @@ export default function ChatPage() {
     }
     setStreamingText('');
   };
+
+  const handleNewChat = () => load(true);
 
   if (loading) {
     return (
@@ -196,7 +278,7 @@ export default function ChatPage() {
         <div className="flex h-screen">
           <Sidebar />
           <div className="flex-1 flex flex-col p-6">
-            <ErrorCard title="Could not load chat" message={error ?? 'Unknown error'} onRetry={load} />
+            <ErrorCard title="Could not load chat" message={error ?? 'Unknown error'} onRetry={() => load()} />
           </div>
         </div>
       </AppShell>
@@ -217,8 +299,20 @@ export default function ChatPage() {
             </Link>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-content truncate">{profile.name}</div>
-              <div className="text-xs text-content-muted">Jyotish advisor</div>
+              <div className="text-xs text-content-muted">
+                {messages.length > 0 ? `${messages.length} messages` : 'Jyotish advisor'}
+              </div>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleNewChat}
+              aria-label="Start new conversation"
+              title="New conversation"
+            >
+              <Plus size={14} />
+              <span className="hidden sm:inline">New chat</span>
+            </Button>
             <Link href={`/chart/${profile.id}`}>
               <Button variant="ghost" size="sm">
                 <LayoutDashboard size={14} />
@@ -254,34 +348,32 @@ export default function ChatPage() {
                     Ask about {profile.name}&apos;s chart
                   </h2>
                   <p className="text-xs text-content-muted max-w-xs leading-relaxed">
-                    I can interpret planetary positions, dashas, yogas, and provide Jyotish guidance based on the birth chart.
+                    Planetary positions, dashas, yogas, KP timing — ask anything about the birth chart.
                   </p>
                 </div>
               </div>
             )}
 
             {messages.map(msg => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                profileName={profile.name}
-              />
+              <MessageBubble key={msg.id} message={msg} profileName={profile.name} />
             ))}
 
-            {isStreaming && (
-              <StreamingBubble text={streamingText} />
-            )}
+            {isStreaming && <StreamingBubble text={streamingText} />}
 
             <div ref={bottomRef} />
           </div>
 
           {/* Input */}
-          <div className="flex-shrink-0 px-4 py-4 border-t border-surface-border bg-surface pb-safe-area-inset-bottom">
+          <div className={cn(
+            'flex-shrink-0 px-4 py-4 border-t border-surface-border bg-surface',
+            'pb-safe-area-inset-bottom',
+          )}>
             <ChatInput
               onSend={handleSend}
               onAbort={handleAbort}
               isStreaming={isStreaming}
               disabled={!conversation}
+              suggestions={dynamicSuggestions}
             />
             <p className="text-2xs text-content-subtle text-center mt-2">
               LuckyRay provides Jyotish interpretations for reflection, not predictions or professional advice.
