@@ -880,8 +880,8 @@ export default function ReportsPage() {
           body: JSON.stringify({
             messages: [{ role: 'user', content: section.prompt(chartCtx) }],
             model: 'meta/llama-3.1-70b-instruct',
-            stream: false,
-            maxTokens: 3000,  // Each section gets up to 3000 tokens for depth
+            stream: true,   // Stream keeps connection alive — avoids 504 inactivity timeout
+            maxTokens: 3000,
           }),
         });
 
@@ -889,22 +889,61 @@ export default function ReportsPage() {
           throw new Error(`API error ${response.status}: ${await response.text().catch(() => '')}`);
         }
 
-        const data = await response.json();
-        const content: string = data?.choices?.[0]?.message?.content ?? 'No response received.';
+        // Read the SSE stream and accumulate content
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('No response stream');
 
-        setReports(prev => ({
-          ...prev,
-          [reportType]: {
-            ...prev[reportType]!,
-            sections: prev[reportType]!.sections.map((s, idx) =>
-              idx === i ? { ...s, content, status: 'done' as SectionStatus } : s,
-            ),
-          },
-        }));
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let accumulated = '';
 
-        // Small pause between calls — enough to avoid burst rate limits
-        if (i < sections.length - 1 && !ctrl.signal.aborted) {
-          await new Promise(r => setTimeout(r, 1500));
+        while (true) {
+          if (ctrl.signal.aborted) { reader.cancel(); break; }
+
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+            if (!trimmed.startsWith('data: ')) continue;
+
+            try {
+              const json = JSON.parse(trimmed.slice(6));
+              const delta = json?.choices?.[0]?.delta?.content;
+              if (typeof delta === 'string') {
+                accumulated += delta;
+                // Update content live as it streams in
+                setReports(prev => ({
+                  ...prev,
+                  [reportType]: {
+                    ...prev[reportType]!,
+                    sections: prev[reportType]!.sections.map((s, idx) =>
+                      idx === i ? { ...s, content: accumulated } : s,
+                    ),
+                  },
+                }));
+              }
+            } catch {
+              // Ignore malformed SSE chunks
+            }
+          }
+        }
+
+        if (!ctrl.signal.aborted) {
+          setReports(prev => ({
+            ...prev,
+            [reportType]: {
+              ...prev[reportType]!,
+              sections: prev[reportType]!.sections.map((s, idx) =>
+                idx === i ? { ...s, content: accumulated || 'No response received.', status: 'done' as SectionStatus } : s,
+              ),
+            },
+          }));
         }
       } catch (err) {
         if (ctrl.signal.aborted) break;
