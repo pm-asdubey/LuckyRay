@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
     chartContext?: ChartContext;
     model?: string;
     stream?: boolean;
+    maxTokens?: number;
   };
 
   try {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { messages, chartContext, model = DEFAULT_MODEL, stream = true } = body;
+  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS } = body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest) {
         model,
         messages: apiMessages,
         temperature: TEMPERATURE,
-        max_tokens: MAX_TOKENS,
+        max_tokens: maxTokens,
         stream,
         top_p: 1,
         frequency_penalty: 0,
