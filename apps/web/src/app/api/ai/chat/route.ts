@@ -4,7 +4,7 @@ import type { AIMessage, ChartContext } from '@luckyray/shared';
 
 const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com/v1';
 const DEFAULT_MODEL = 'meta/llama-3.1-70b-instruct';
-const MAX_TOKENS = 2048;
+const MAX_TOKENS = 4096;
 const TEMPERATURE = 0.7;
 
 export const runtime = 'edge';

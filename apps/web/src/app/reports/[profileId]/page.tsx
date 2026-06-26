@@ -58,8 +58,9 @@ ANALYSIS RULES — FOLLOW STRICTLY:
 - Do NOT soften negative indicators. Honest analysis serves the person better than false comfort
 - For timing: analyze Mahadasha → Antardasha → Pratyantar → Gochar in sequence
 - Be specific about time windows. Avoid vague phrases like "in the future" or "someday"
-- Minimum 400 words for this section. Be thorough and analytical, not brief
-- Write in clear prose. Use paragraph breaks for readability
+- MINIMUM 800 words for this section. Do not stop until every sub-topic listed is fully covered
+- CRITICAL: Never truncate mid-sentence or mid-analysis. If you are approaching your output limit, wrap up the current point cleanly with a summary paragraph — but do not stop abruptly
+- Write in clear prose. Use paragraph breaks for readability. This is a professional report
 `.trim();
 
 function makePrompt(instruction: string, chartCtx: string): string {
@@ -881,7 +882,7 @@ export default function ReportsPage() {
             messages: [{ role: 'user', content: section.prompt(chartCtx) }],
             model: 'meta/llama-3.1-70b-instruct',
             stream: true,   // Stream keeps connection alive — avoids 504 inactivity timeout
-            maxTokens: 3000,
+            maxTokens: 4096, // Maximum for llama-3.1-70b on NVIDIA NIM
           }),
         });
 
