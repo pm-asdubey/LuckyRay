@@ -12,6 +12,31 @@ interface UseAIChatOptions {
 
 const MAX_CONTINUATION_PASSES = 5;
 
+/**
+ * Parse SSE lines from a buffer split on '\n\n'.
+ * Returns { tokens, finishReason } extracted from the batch.
+ */
+function parseSSEChunk(raw: string): { content: string; finishReason: string | null } {
+  let content = '';
+  let finishReason: string | null = null;
+  for (const part of raw.split('\n')) {
+    const line = part.trim();
+    if (!line || !line.startsWith('data: ') || line === 'data: [DONE]') continue;
+    try {
+      const json = JSON.parse(line.slice(6));
+      const choice = json.choices?.[0];
+      const delta = choice?.delta?.content;
+      if (typeof delta === 'string' && delta) content += delta;
+      // finish_reason is the string "stop"/"length"/null-json-value
+      const fr = choice?.finish_reason;
+      if (typeof fr === 'string' && fr && fr !== 'null') finishReason = fr;
+    } catch {
+      // ignore malformed chunks
+    }
+  }
+  return { content, finishReason };
+}
+
 export function useAIChat({
   chartContext,
   onToken,
@@ -19,6 +44,14 @@ export function useAIChat({
   onError,
 }: UseAIChatOptions) {
   const abortRef = useRef<AbortController | null>(null);
+
+  // Stable refs to callbacks so 'send' closure never goes stale between renders
+  const onTokenRef = useRef(onToken);
+  const onCompleteRef = useRef(onComplete);
+  const onErrorRef = useRef(onError);
+  onTokenRef.current = onToken;
+  onCompleteRef.current = onComplete;
+  onErrorRef.current = onError;
 
   const send = useCallback(
     async (initialMessages: AIMessage[]) => {
@@ -39,70 +72,78 @@ export function useAIChat({
           });
 
           if (!response.ok) {
-            const error = await response.json().catch(() => ({ error: 'Request failed' }));
-            onError(error.error ?? `HTTP ${response.status}`);
+            const err = await response.json().catch(() => ({ error: 'Request failed' }));
+            onErrorRef.current(err.error ?? `HTTP ${response.status}`);
             return;
           }
 
           const reader = response.body?.getReader();
-          if (!reader) { onError('No response stream'); return; }
+          if (!reader) { onErrorRef.current('No response stream'); return; }
 
           const decoder = new TextDecoder();
           let buffer = '';
           let passText = '';
           let finishReason: string | null = null;
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
 
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n\n');
-            buffer = parts.pop() ?? '';
+              buffer += decoder.decode(value, { stream: true });
 
-            for (const part of parts) {
-              const line = part.trim();
-              if (!line || line === 'data: [DONE]') continue;
-              if (!line.startsWith('data: ')) continue;
+              // SSE events are double-newline delimited; keep the last incomplete segment
+              const events = buffer.split('\n\n');
+              buffer = events.pop() ?? '';
 
-              try {
-                const json = JSON.parse(line.slice(6));
-                const choice = json.choices?.[0];
-                const delta = choice?.delta?.content;
-                if (delta) {
-                  passText += delta;
-                  accumulatedText += delta;
-                  onToken(delta);
+              for (const event of events) {
+                if (!event.trim() || event.trim() === 'data: [DONE]') continue;
+                const { content, finishReason: fr } = parseSSEChunk(event);
+                if (content) {
+                  passText += content;
+                  accumulatedText += content;
+                  onTokenRef.current(content);
                 }
-                if (choice?.finish_reason && choice.finish_reason !== 'null') {
-                  finishReason = choice.finish_reason;
-                }
-              } catch {
-                // Skip malformed SSE events
+                if (fr) finishReason = fr;
               }
             }
+
+            // Flush anything left in the buffer after the stream closes
+            if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
+              const { content, finishReason: fr } = parseSSEChunk(buffer);
+              if (content) {
+                passText += content;
+                accumulatedText += content;
+                onTokenRef.current(content);
+              }
+              if (fr) finishReason = fr;
+            }
+          } finally {
+            reader.releaseLock();
           }
 
-          // Natural end — done
-          if (finishReason !== 'length') {
-            break;
+          // If model hit token limit, send continuation
+          if (finishReason === 'length') {
+            conversationMessages = [
+              ...conversationMessages,
+              { role: 'assistant', content: passText },
+              { role: 'user', content: 'Continue from exactly where you left off.' },
+            ];
+            continue;
           }
 
-          // Token limit hit — set up continuation
-          conversationMessages = [
-            ...conversationMessages,
-            { role: 'assistant', content: passText },
-            { role: 'user', content: 'Continue.' },
-          ];
+          // Natural end or unknown — stop
+          break;
         }
 
-        onComplete(accumulatedText);
+        onCompleteRef.current(accumulatedText);
       } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') return;
-        onError(err instanceof Error ? err.message : 'Unknown error');
+        onErrorRef.current(err instanceof Error ? err.message : 'Unknown error');
       }
     },
-    [chartContext, onToken, onComplete, onError],
+    // chartContext is the only external dep — callbacks use stable refs
+    [chartContext],
   );
 
   const abort = useCallback(() => {

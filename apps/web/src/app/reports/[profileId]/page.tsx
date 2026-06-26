@@ -8,7 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { ArrowLeft, Download, Loader2, CheckCircle2, ChevronDown, Play, RefreshCw, AlertCircle, Clock } from 'lucide-react';
 import { getProfile, getLatestChart } from '@luckyray/storage';
 import type { Profile, StoredChart } from '@luckyray/shared';
-import { buildChartContext, serializeChartContext } from '@luckyray/ai';
+import { buildChartContext } from '@luckyray/ai';
 import { computeCurrentGochar } from '@luckyray/jyotish';
 import { AppShell } from '@/components/layout/app-shell';
 import { Sidebar, BottomNav } from '@/components/layout/nav';
@@ -51,387 +51,244 @@ const REPORT_META: Record<ReportType, { title: string; subtitle: string; icon: R
 
 const REPORT_TYPES: ReportType[] = ['career', 'love', 'wealth', 'health'];
 
-// ─── Prompts ──────────────────────────────────────────────────────────────────
+// ─── Report System Prompt ─────────────────────────────────────────────────────
+// This replaces the chat system prompt entirely for reports.
+// Strict output style: planet → result → confidence. No Jyotish lectures.
 
-const PREAMBLE = `
-FORMATTING: Format your response using Markdown. Use **bold** for key findings. Use bullet lists where appropriate. Use headers like "### Sub-section" for sub-topics within the section.
+const REPORT_SYSTEM_PROMPT = `You are a Jyotish analyst writing a structured astrological report section.
 
-DATA RULES:
-- Use ONLY verified facts in CHART DATA. Do not invent aspects, conjunctions, or positions not stated there.
-- Aspects vs Conjunctions: Planets in the same house = CONJUNCT (never say they "aspect" each other).
-- Dignity: Own sign / Moolatrikona = STRONG. Never call own-sign "neutral."
-- KP Timing: For predicted periods, use the KP PREDICTED PERIODS from the chart data — do not invent dasha timing.
-- Label every prediction: [HIGH CONFIDENCE], [MEDIUM CONFIDENCE], or [LOW CONFIDENCE].
-- Be thorough, honest, and specific. Do not soften negative indicators.
-`.trim();
+OUTPUT RULES — FOLLOW EXACTLY:
+- Write only about the SPECIFIC topic you are asked. Do not bring in other life areas.
+- Lead each observation with the planet or combination in **bold**, then 1–2 sentences max.
+- Format: **Planet** (role) — result. [HIGH / MEDIUM / LOW]
+- Use bullet points. Paragraphs only for the final summary line.
+- Do NOT explain how Jyotish works or what houses/signs mean in general.
+- Do NOT add preambles, meta-commentary, headers like "Response Structure", or instructions.
+- Do NOT say "The native". Use direct statements.
+- State negative indicators honestly. Do not soften them.
+- End every section with **Bottom line:** followed by 1–2 sentences.
+- Output ONLY the astrological analysis. Nothing else.`.trim();
 
-function makePrompt(body: string, ctx: string): string {
-  return `${PREAMBLE}\n\n${body}\n\n---\nCHART DATA:\n${ctx}`;
-}
+// ─── Section Prompts ──────────────────────────────────────────────────────────
 
-interface SectionDef { id: string; title: string; prompt: (ctx: string) => string }
+interface SectionDef { id: string; title: string; prompt: string }
 
 function getSections(type: ReportType): SectionDef[] {
   const defs: Record<ReportType, SectionDef[]> = {
     career: [
-      { id: 'c1', title: '1. Natal Career Architecture', prompt: ctx => makePrompt(`Analyze the natal career architecture in detail:
-- **10th house**: sign, lord placement (sign, house, dignity, all aspects received and given), all occupants
-- **10th lord strength**: exalted/own/friendly/neutral/enemy/debilitated — what does this mean for the career trajectory?
-- **6th house** (service, daily work, competition): condition, lord placement
-- **2nd house** (accumulated income, speech): lord and occupants
-- **11th house** (gains, desires fulfilled): lord strength and occupants
-- Interconnections and yoga formations between these wealth/career houses
-- What career domains and professional signatures does this combination indicate? Be specific about industries.`, ctx) },
-      { id: 'c2', title: '2. Career Significator Planets', prompt: ctx => makePrompt(`Analyze every career-significant planet in depth:
+      {
+        id: 'c1',
+        title: '1. Career Signature',
+        prompt: `TOPIC: Career and profession ONLY. Do not mention marriage, health, or any other life area.
 
-**Sun** (authority, government, father, leadership, status) — sign, house, dignity, aspects received and given, combustion status, career implications
+From the chart data, write bullet points covering:
+- **10th lord** — which planet, where placed, its dignity, and what that means for career
+- **Planets in 10th house** — each one and its career implication (skip if empty)
+- **Sun** (authority, status, government) — placement and career meaning
+- **Saturn** (career karaka, discipline, longevity) — placement and career meaning
+- **6th lord** (daily work, service) — brief placement note
+- **11th lord** (income, gains) — whether it supports earnings
+- **Career domain** — 2–3 specific industries or roles this chart points to
 
-**Saturn** (natural career karaka, discipline, hard work, law, industry, longevity of career) — same depth of analysis
+End with: **Bottom line:** [1–2 sentence overall career signature]`,
+      },
+      {
+        id: 'c2',
+        title: '2. Yogas & Strengths',
+        prompt: `TOPIC: Career yogas and potential ONLY.
 
-**Mercury** (intellect, communication, business, IT, analysis, trade) — same depth
+From the chart data, identify:
+- Any **Raja Yogas** involving career houses (10th, 6th, 11th) — name the planets and what they indicate
+- **Dharma-Karmadhipati Yoga** (9th + 10th lords) — present or absent, implication
+- Any **Pancha Mahapurusha Yoga** — which one, career domain it strengthens
+- Any **Neecha Bhanga** or **Parivartana** affecting career planets
+- **Overall career strength**: Exceptional / Strong / Moderate / Limited — 1 line of evidence
 
-**Mars** (engineering, surgery, military, real estate, competitive work) — same depth
+End with: **Bottom line:** [career potential in one sentence]`,
+      },
+      {
+        id: 'c3',
+        title: '3. Timing — Dasha, KP & Transits',
+        prompt: `TOPIC: Career timing ONLY. Cover all three layers briefly.
 
-**Jupiter** (education, law, banking, advisory, management, wisdom) — same depth
+**KP**: H10 sub-lord — which houses does it signify? Is career promised? What KP periods are active?
 
-For each planet: what specific career strengths and vulnerabilities does its condition reveal?`, ctx) },
-      { id: 'c3', title: '3. Career Yogas & Combinations', prompt: ctx => makePrompt(`Identify and explain all career-relevant yogas precisely:
+**Current Dasha**:
+- Mahadasha lord — which houses it rules, career verdict [CONFIDENCE]
+- Antardasha lord — immediate career conditions [CONFIDENCE]
 
-- **Raja Yogas present**: name each exactly — which lords are involved, which houses, the strength of each
-- **Dharma-Karmadhipati Yoga**: 9th lord + 10th lord — are they conjunct, aspecting, in exchange?
-- **Pancha Mahapurusha Yogas**: Sasha (Saturn), Ruchaka (Mars), Hamsa (Jupiter), Malavya (Venus), Bhadra (Mercury) — which are present and what do they indicate?
-- **Neecha Bhanga** (debilitation cancellation) affecting career planets — name each cancellation
-- **Parivartana** exchanges involving career houses (1, 2, 6, 10, 11)
-- **Viparita Raja Yoga** if present (6th/8th/12th lord in another dusthana)
+**Upcoming 3 years**: for each upcoming antardasha, one bullet: planet → career implication → dates
 
-**Overall career potential rating**: Exceptional / Strong / Moderate / Limited — with explicit evidence.`, ctx) },
-      { id: 'c4', title: '4. KP & Dasha Timing for Career', prompt: ctx => makePrompt(`Exhaustive timing analysis for career using both Jyotish Dasha and KP methods:
+**Transits** (use gochar data from chart):
+- Saturn transit — which natal house, career impact
+- Jupiter transit — which natal house, career impact
 
-**KP Career Promise**: Report the H10 sub lord, what houses it signifies, whether career is promised, and the KP predicted periods (from the KP section of chart data).
+**Best career window** in the next 3 years — identify it with the dasha+transit combination that creates it.
 
-**Current Mahadasha**: which houses does the lord rule? Which house does it occupy? What is its dignity? What is its natural signification for career? Overall career verdict for this Mahadasha period.
-
-**Current Antardasha**: same detailed treatment. How does it interact with the Mahadasha lord? Career conditions RIGHT NOW.
-
-**Current Pratyantar**: what is the immediate career condition in the next few weeks/months?
-
-**Upcoming 5 years** — for each upcoming Antardasha: name the planet, its house rulerships, and whether it supports or challenges career.
-
-**Best career window in next 5 years**: identify it with full reasoning.
-
-Label all timing predictions with [HIGH/MEDIUM/LOW CONFIDENCE].`, ctx) },
-      { id: 'c5', title: '5. Current Transits & Near-Term Outlook', prompt: ctx => makePrompt(`Current planetary transits for career:
-
-**Saturn transit**: which natal house is it transiting? Impact on career (2nd = finances, 6th = work environment, 10th = career peak/challenge, 11th = gains). Duration remaining in this transit. Specific career implication.
-
-**Jupiter transit**: which natal house? Career blessing or challenge? Specific domain of benefit (promotion, new opportunity, expansion). Duration.
-
-**Rahu-Ketu axis**: which natal houses are affected? Rahu = sudden career changes, unconventional opportunities, ambition; Ketu = separation, specialization.
-
-**Mars transit**: over which natal house? Career activity levels — initiative, conflict, energy.
-
-**Net verdict**: do current transits reinforce or challenge the dasha indications? Where they agree = high confidence.
-
-Provide approximate timeline for each transit.`, ctx) },
-      { id: 'c6', title: '6. Career — Final Synthesis & Predictions', prompt: ctx => makePrompt(`Comprehensive final career analysis:
-
-**PART A — Natal Profile**
-- Overall career rating with evidence
-- Primary career domains indicated by this chart (be very specific: industries, roles)
-- Top 3 professional strengths
-- Top 2 professional vulnerabilities or blind spots
-
-**PART B — Timing Predictions**
-- **Near term (next 6 months)**: career trajectory, specific opportunities or challenges [Confidence + Evidence]
-- **Medium term (1–3 years)**: major professional developments, best action windows [Confidence + Evidence]
-- **Long term (3–7 years)**: peak career period, overall professional arc [Confidence + Evidence]
-
-**PART C — Strategic Guidance**
-- Income domains most aligned with this chart (employment vs business vs advisory vs creative)
-- Optimal timing for: launching a business, seeking promotion, changing careers
-- Specific cautions and what to avoid based on planetary weaknesses
-- One actionable insight the person can apply immediately`, ctx) },
+End with: **Bottom line:** [timing verdict in 1–2 sentences]`,
+      },
     ],
     love: [
-      { id: 'l1', title: '1. Natal Relationship Architecture', prompt: ctx => makePrompt(`Analyze natal relationship and marriage architecture:
-- **7th house**: sign, lord placement (sign, house, dignity, all aspects received and given), occupying planets
-- **7th lord strength**: what does its condition reveal about partnership quality and timing?
-- **5th house** (romance, courtship, attraction): condition, lord placement
-- **2nd house** (family life, domestic happiness): lord and occupants
-- **11th house** (desire fulfillment, social circle): role in relationships
-- **8th house** (marriage longevity, transformation, spouse's resources): condition
-- Partner profile: what qualities does the 7th house sign and lord placement indicate in a spouse/partner?`, ctx) },
-      { id: 'l2', title: '2. Relationship Significator Planets', prompt: ctx => makePrompt(`Deep analysis of relationship and love planets:
+      {
+        id: 'l1',
+        title: '1. Relationship Signature',
+        prompt: `TOPIC: Love and marriage ONLY. Do not mention career, health, or wealth.
 
-**Venus** (prime relationship karaka — love, beauty, pleasure, partnership): sign, house, nakshatra, dignity, combust?, aspects from malefics vs benefics, nakshatra lord, sub lord (KP). Full relationship implications.
+From the chart data, write bullet points covering:
+- **7th lord** — placement, dignity, and partnership implication
+- **Planets in 7th house** — each with its relationship implication (skip if empty)
+- **Venus** (love, partnership karaka) — sign, house, dignity, and relationship meaning
+- **Moon** (emotional nature in relationships) — condition and emotional pattern
+- **5th lord** (romance, attraction) — brief note
+- **Partner profile** — 2–3 qualities the 7th house sign and lord indicate in a partner
 
-**Moon** (emotional nature, receptivity, mind, nurturing): sign, house, waxing/waning, afflictions from Saturn/Rahu/Mars, nakshatra — emotional patterns in relationships.
+End with: **Bottom line:** [relationship signature in 1–2 sentences]`,
+      },
+      {
+        id: 'l2',
+        title: '2. Doshas, Yogas & Delays',
+        prompt: `TOPIC: Marriage combinations ONLY.
 
-**Mars** (passion, physical attraction, Manglik factor): placement, aspects, relationship with Venus — passion and conflict dynamics.
+From the chart data, identify:
+- **Manglik Dosha** — Mars in which house? Severity? Any cancellations present?
+- **Marriage yoga** — any Raja Yoga or beneficial exchange involving the 7th lord
+- **Afflictions** — Saturn, Rahu, Ketu influence on 7th house or Venus
+- **Delay indicators** — if 7th lord is in dusthana or afflicted, state it honestly
+- **Overall marriage prospect**: Favorable / Delayed / Challenged — 1 line of evidence
 
-**Jupiter** (husband karaka for female charts; blessings, dharmic alignment): placement, 7th house aspect if any.
+End with: **Bottom line:** [marriage potential summary]`,
+      },
+      {
+        id: 'l3',
+        title: '3. Timing — Dasha, KP & Transits',
+        prompt: `TOPIC: Marriage timing ONLY.
 
-**Rahu** (unconventional relationships, foreign partner, desire): position and influence on 7th or Venus.
+**KP**: H7 sub-lord — houses signified, marriage promised? Active KP marriage periods?
 
-For each: what does its condition specifically reveal about how this person experiences love, partnership, and marriage?`, ctx) },
-      { id: 'l3', title: '3. Marriage Yogas, Doshas & Timing', prompt: ctx => makePrompt(`Analyze marriage-specific combinations:
+**Current Dasha**:
+- Mahadasha lord — does it trigger 7th/5th/11th? Marriage verdict [CONFIDENCE]
+- Antardasha lord — immediate relationship conditions [CONFIDENCE]
 
-- **Manglik Dosha**: Is Mars in 1/4/7/8/12? Which house? Severity? What specific cancellations are present?
-- **Marriage yogas**: Raja Yoga involving 7th lord, Parivartana involving 7th, 5th-7th lord relationship
-- **Afflictions on marriage**: Saturn in/aspecting 7th, Rahu/Ketu in 7th, multiple malefics on Venus
-- **Indicators of delay**: 7th lord in dusthana, Saturn on 7th lord, malefics in 7th without benefic aspect
-- **Multiple marriage indicators**: if present, state clearly and honestly
-- **Separation or discord indicators**: if present, state honestly
-- **Cancellations** for negative combinations: list each one
-- **Overall marriage prospect**: Highly Favorable / Favorable / Moderately Favorable / Delayed / Challenged — with evidence`, ctx) },
-      { id: 'l4', title: '4. KP & Dasha Timing for Marriage', prompt: ctx => makePrompt(`Exhaustive timing analysis for marriage using both Jyotish and KP:
+**Primary marriage window** — which dasha combination creates it, approximate dates [CONFIDENCE]
 
-**KP Marriage Promise**: Report the H7 sub lord, what houses it signifies, whether marriage is promised, and KP predicted periods for marriage.
+**Transits** (use gochar data):
+- Jupiter transit — natal house, marriage support or neutral
+- Saturn transit — delays or maturity in relationships
 
-**Current Mahadasha**: does it rule/occupy 7th, 5th, or 11th (marriage triggers) or 2nd (family)? Relationship with Venus? Marriage verdict for this period.
+**Best upcoming window** combining dasha + transit.
 
-**Current Antardasha**: immediate marriage conditions. Is there a triggering combination active now?
-
-**Classic marriage triggers to watch**: Dasha/Antardasha of 7th lord, Venus, planets in 7th, and the Darakaraka.
-
-**Upcoming dasha sequence** — identify the primary marriage window with full reasoning: which dasha combination, which planets, which period dates.
-
-**Secondary window** if the primary passes. Be explicit about periods of difficulty as well.
-
-Label all with [HIGH/MEDIUM/LOW CONFIDENCE].`, ctx) },
-      { id: 'l5', title: '5. Transits & Relationship Dynamics', prompt: ctx => makePrompt(`Current transits for love and marriage:
-
-**Jupiter transit**: which natal house? Does it aspect natal Venus or the 7th house cusp? Duration. Marriage/relationship blessing or neutral?
-
-**Saturn transit**: over natal Venus, 7th house, or the 7th lord? Delays, restrictions, or stability/maturity? Is Sade Sati active? Which phase?
-
-**Rahu-Ketu axis**: Rahu over Venus or 7th = intense, unconventional attraction — passion and disruption combined.
-
-**Venus transit** (for near-term relationship events): current position and implications.
-
-**Net verdict**: do transits support, delay, or complicate marriage and relationships?
-
-**Best upcoming marriage window** combining dasha + transit alignment — give month/year ranges.`, ctx) },
-      { id: 'l6', title: '6. Love & Marriage — Final Synthesis', prompt: ctx => makePrompt(`Comprehensive final love and marriage analysis:
-
-**PART A — Natal Relationship Profile**
-- Overall rating for partnership and marriage
-- Ideal partner profile (qualities, background, nature indicated by 7th house sign/lord/nakshatra)
-- Relationship patterns and tendencies (how this person loves, attaches, commits)
-- Primary relationship strengths and vulnerabilities
-
-**PART B — Marriage Timing**
-- Primary marriage window [Confidence + full evidence chain]
-- Secondary window [Confidence + evidence]
-- Delay indicators if present (be honest)
-- Periods of relationship difficulty or separation risk
-
-**PART C — Post-Marriage Dynamics**
-- Marital harmony indicators
-- Areas of friction or growth
-- Financial dynamics with spouse (8th house)
-- Children timing (5th house)
-
-**PART D — Guidance**
-- Relationship approach suited to this chart
-- What to prioritize and what to avoid
-- Optimal timing for commitment and marriage
-- One actionable relationship insight`, ctx) },
+End with: **Bottom line:** [timing verdict in 1–2 sentences]`,
+      },
     ],
     wealth: [
-      { id: 'w1', title: '1. Natal Wealth Architecture', prompt: ctx => makePrompt(`Analyze natal wealth architecture in depth:
-- **2nd house** (accumulated wealth, liquid assets, family wealth): sign, lord placement, dignity, all aspects, occupants
-- **11th house** (income, gains, desires fulfilled, profits): sign, lord strength, occupants, all aspects
-- **5th house** (investments, speculation, intelligence, creativity): condition
-- **9th house** (fortune, luck, dharma, father's support): condition
-- **8th house** (inheritance, windfall, sudden gains/losses, other's resources): condition
-- **12th house** (expenditure, losses, foreign investments): how does it balance against income houses?
-- Are the primary wealth houses (2nd, 11th) in strong hands (lord in kendra/trikona) or challenged (lord in dusthana)?`, ctx) },
-      { id: 'w2', title: '2. Wealth Significator Planets', prompt: ctx => makePrompt(`Deep analysis of wealth planets:
+      {
+        id: 'w1',
+        title: '1. Wealth Signature',
+        prompt: `TOPIC: Wealth and finances ONLY. Do not mention career ambitions, marriage, or health.
 
-**Jupiter** (natural karaka of wealth and expansion): sign, house, dignity, aspects, functional role for this ascendant, natural wealth domain
+From the chart data, write bullet points covering:
+- **2nd lord** (accumulated wealth) — placement, dignity, wealth implication
+- **11th lord** (income and gains) — placement and earning capacity
+- **Jupiter** (wealth karaka, expansion) — sign, house, dignity
+- **Venus** (luxury, assets) — condition and material comfort
+- **9th lord** (fortune, luck) — whether it supports wealth
+- Planets in 2nd or 11th — each with wealth implication (skip if empty)
+- **Primary income style** — employment / business / investment / inheritance based on chart
 
-**Venus** (luxury, material comfort, investments, arts): condition and wealth implications
+End with: **Bottom line:** [wealth signature in 1–2 sentences]`,
+      },
+      {
+        id: 'w2',
+        title: '2. Dhana Yogas',
+        prompt: `TOPIC: Wealth yogas and financial combinations ONLY.
 
-**Mercury** (business, trade, calculation, financial acumen, communication): condition
+From the chart data, identify:
+- **Dhana Yoga** (2nd + 11th lord connection) — conjunct, aspecting, or exchange? Strength?
+- **Lakshmi Yoga** — 9th lord + Venus conditions — present?
+- Any **Raja Yoga** involving 2nd or 11th lords
+- **Negative combinations** — 2nd lord in 12th, 11th lord in dusthana — state honestly
+- **Overall wealth potential**: Exceptional / Strong / Moderate / Limited
 
-**Moon** (liquid assets, flow of money, fluctuations, imports): strength, sign, house — wealth fluidity
+End with: **Bottom line:** [wealth potential in one sentence]`,
+      },
+      {
+        id: 'w3',
+        title: '3. Timing — Dasha, KP & Transits',
+        prompt: `TOPIC: Financial timing ONLY.
 
-**Saturn** (slow and steady accumulation, discipline, real estate, labor): condition and accumulation patterns
+**KP**: H11 sub-lord — houses signified, wealth promised? Active KP financial periods?
 
-**Rahu** (sudden gains, unconventional income, foreign wealth, amplification): position and wealth amplification
+**Current Dasha**:
+- Mahadasha lord — does it activate 2nd/11th/5th/9th? Financial verdict [CONFIDENCE]
+- Antardasha lord — immediate financial conditions [CONFIDENCE]
 
-For each: specific implication for this person's financial signature.`, ctx) },
-      { id: 'w3', title: '3. Dhana Yogas & Wealth Combinations', prompt: ctx => makePrompt(`Identify ALL wealth yogas with precision:
+**Best accumulation windows** in next 3 years — dasha combinations that activate wealth [CONFIDENCE]
 
-**Dhana Yogas** (primary): 2nd lord + 11th lord — are they conjunct, aspecting, in exchange? Rate each formation.
+**Transits** (use gochar data):
+- Jupiter transit — which house, financial impact
+- Saturn transit — restriction or structured accumulation
 
-**Lakshmi Yoga**: 9th lord in own/exalted sign AND strong Venus in kendra or trikona — present?
+**One caution period** — when to avoid major financial risk.
 
-**Raja Yogas with financial impact**: those involving 2nd or 11th lords specifically
-
-**Pancha Mahapurusha Yogas** and their material wealth domain
-
-**Viparita Raja Yoga**: 6th/8th/12th lord in another dusthana — paradoxical material success through difficulties?
-
-**Parivartana exchanges** involving 2nd, 11th, or 9th lords
-
-**Negative combinations**: 2nd lord in 12th, 11th lord in dusthana, malefics in 2nd without relief
-
-**Overall wealth potential**: Exceptional / Strong / Moderate / Limited — with evidence.`, ctx) },
-      { id: 'w4', title: '4. KP & Dasha Timing for Wealth', prompt: ctx => makePrompt(`Exhaustive wealth timing using Jyotish and KP:
-
-**KP Wealth Promise**: Report the H11 sub lord, what houses it signifies, whether wealth is promised, and KP predicted periods for financial gains.
-
-**Current Mahadasha**: does it rule 2nd/11th/5th/9th (wealth triggers)? Does it rule 6th/8th/12th (financial challenges)? Natural signification for wealth. Overall financial verdict.
-
-**Current Antardasha**: financial implications now. Does it activate any Dhana Yoga?
-
-**Current Pratyantar**: immediate financial conditions — favorable for transactions, investments, or caution?
-
-**Upcoming wealth periods (next decade)**: identify the best accumulation windows, major financial events, expenditure/caution periods.
-
-**Peak wealth period**: when in the dasha sequence does maximum financial accumulation occur?
-
-**Income source activation**: when do specific income streams (business, investment, inheritance, salary) activate?
-
-Label all with [HIGH/MEDIUM/LOW CONFIDENCE].`, ctx) },
-      { id: 'w5', title: '5. Transits & Financial Outlook', prompt: ctx => makePrompt(`Current transits for wealth and finance:
-
-**Jupiter transit**: which natal house? H2 = savings accumulation; H5 = investment returns; H9 = fortune activation; H11 = maximum gains. Duration and specific financial implication.
-
-**Saturn transit**: restriction or discipline in finances. Which house? Specific impact on the financial area it transits. Long-term financial restructuring.
-
-**Rahu transit**: sudden financial changes — windfall or sudden loss depending on house. Is it over 2nd or 11th?
-
-**Net financial transit picture**: is the current period for accumulation, stability, restructuring, or caution?
-
-**Upcoming major transit events** affecting finances in next 6–12 months — name each and its implication.`, ctx) },
-      { id: 'w6', title: '6. Wealth — Final Synthesis & Strategy', prompt: ctx => makePrompt(`Comprehensive final wealth analysis:
-
-**PART A — Natal Financial Profile**
-- Overall wealth potential rating with evidence
-- Primary wealth generation channels (employment income / business profits / investments / inheritance / speculation / passive income)
-- Key financial strengths (what creates money naturally for this chart)
-- Key financial vulnerabilities (what creates losses or blocks)
-
-**PART B — Timing Predictions**
-- **Near term (6 months)**: financial trajectory [Confidence + Evidence]
-- **Medium term (1–3 years)**: accumulation windows, best investment windows, caution periods
-- **Long term (3–7 years)**: peak wealth accumulation period, overall financial arc
-
-**PART C — Financial Strategy**
-- Wealth-building approach aligned with this chart's patterns
-- Investment domains (real estate, business, stock market, gold) suited to planetary signatures
-- Financial mistakes to avoid based on planetary weaknesses
-- Best timing for major financial decisions (investment, business launch, property purchase)
-- One immediate financial insight`, ctx) },
+End with: **Bottom line:** [financial timing verdict in 1–2 sentences]`,
+      },
     ],
     health: [
-      { id: 'h1', title: '1. Constitution & Physical Vitality', prompt: ctx => makePrompt(`Analyze physical constitution and body:
-- **Lagna sign**: what constitutional type, physical tendencies, and vitality level does it indicate?
-- **Lagna lord**: placement, dignity, house — the lagna lord IS the body karaka. Is it strong, challenged, afflicted?
-- Is the lagna lord in kendra (strong vitality), trikona (protected vitality), or dusthana (vulnerable)?
-- **Planets in 1st house**: benefics strengthen constitution, malefics create stress — analyze each
-- **Aspects to 1st house**: from malefics vs benefics — overall vitality rating
-- **6th house**: sign, lord placement — what disease categories are associated with this sign?
-- **8th house**: chronic conditions, longevity indicators, hidden vulnerabilities
-- **12th house**: hospitalization risk, hidden ailments, foreign illness
+      {
+        id: 'h1',
+        title: '1. Vitality & Constitution',
+        prompt: `TOPIC: Physical health and constitution ONLY. Do not mention career, relationships, or finances.
 
-**DISCLAIMER: Jyotish analysis for self-awareness only. Always consult qualified medical professionals for health decisions.**`, ctx) },
-      { id: 'h2', title: '2. Health Significator Planets', prompt: ctx => makePrompt(`Deep analysis of health-significant planets:
+From the chart data, write bullet points covering:
+- **Lagna lord** (body karaka) — placement, dignity, vitality implication
+- **Sun** (core vitality, immunity) — sign, house, any afflictions
+- **Moon** (mind, fluids, emotional health) — condition and health pattern
+- **Saturn** (chronic conditions, bones, joints) — any health vulnerabilities indicated
+- **6th house sign** — which body systems are naturally stressed
+- **Mars** (inflammation, accidents, surgery risk) — placement note
+- **Rahu/Ketu** — any unusual health patterns
 
-**Sun** (vitality, heart, spine, immunity, eyes): sign, house, dignity, combust?, afflictions from Saturn/Rahu/Mars — core vitality verdict
+Disclaimer: Jyotish health analysis is for self-awareness only. Consult a doctor for medical decisions.
 
-**Moon** (mind, blood, fluids, emotional health, lymph): strength (waxing/waning, sign), afflictions — mental and physical health patterns
+End with: **Bottom line:** [constitution rating and key vulnerability in 1–2 sentences]`,
+      },
+      {
+        id: 'h2',
+        title: '2. Disease Patterns',
+        prompt: `TOPIC: Health vulnerabilities and patterns ONLY.
 
-**Mars** (muscles, blood, inflammation, accidents, surgery, fevers): placement, aspects — injury and energy patterns
+From the chart data:
+- **6th house sign** disease associations — which organ systems are naturally stressed
+- **Classical combinations present** — Moon+Saturn (mental health), Mars+Saturn (inflammation/accidents), Rahu+Sun (unusual conditions) — only mention ones actually present
+- **8th house** — chronic condition or longevity indicator
+- **Mental health** — Moon condition and Mercury condition, brief note
+- **Strongest health protection** — which benefic aspect provides recovery and immunity
 
-**Saturn** (chronic disease, bones, joints, nervous system, skin, teeth, depression): position and chronic tendency analysis
+Disclaimer: Jyotish analysis only — not medical advice.
 
-**Rahu** (mysterious illnesses, viral infections, poisons, unusual conditions): position and health domain
+End with: **Bottom line:** [key health vulnerability and protective factor]`,
+      },
+      {
+        id: 'h3',
+        title: '3. Timing — Dasha, KP & Transits',
+        prompt: `TOPIC: Health timing ONLY.
 
-**Ketu** (immune disorders, past-life diseases, mysterious ailments, spiritual body): position
+**KP**: H1 sub-lord — does it signify H6/H8/H12 (challenge) or H1/H5/H11 (strength)?
 
-For each: what specific body systems and health patterns does its condition reveal?
+**Current Dasha**:
+- Mahadasha lord — health-sensitive or protective? [CONFIDENCE]
+- Antardasha lord — immediate health conditions [CONFIDENCE]
 
-**DISCLAIMER: Jyotish analysis only — consult medical professionals.**`, ctx) },
-      { id: 'h3', title: '3. Disease Patterns & Indicators', prompt: ctx => makePrompt(`Analyze specific health patterns:
+**Sensitive periods in next 3 years** — when 6th/8th/12th lords activate (list dates briefly)
 
-**6th house sign disease associations**:
-- Aries=head/fevers/inflammation, Taurus=throat/thyroid/neck, Gemini=respiratory/nervous system, Cancer=digestive/stomach/chest
-- Leo=heart/spine/ego-related, Virgo=intestinal/digestive/anxiety, Libra=kidney/hormonal/lower back, Scorpio=reproductive/sexual/infection
-- Sagittarius=liver/hips/thighs, Capricorn=bones/joints/skin, Aquarius=circulation/nervous/ankles, Pisces=feet/lymphatic/addiction
+**Transits** (use gochar data):
+- Saturn transit — natal house, health impact
+- Rahu-Ketu — any health-sensitive natal houses affected
 
-**Classical health combinations in this chart** — check each:
-- Moon + Saturn: chronic melancholy, depression
-- Mars + Saturn: accidents, chronic inflammation, blood disorders
-- Sun + Rahu: vitality fluctuations, unusual conditions
-- Malefics in 8th: longevity and chronic condition concerns
-- Mars in 6th: strong immunity but prone to inflammation and accidents
+Disclaimer: Health sensitivity periods indicate vigilance, not certainty of illness. Consult medical professionals.
 
-**Mental health indicators**: Moon's condition, Mercury's condition, Jupiter's protective aspect — emotional resilience or fragility
-
-**DISCLAIMER: Jyotish analysis only.**`, ctx) },
-      { id: 'h4', title: '4. KP & Dasha Timing for Health', prompt: ctx => makePrompt(`Exhaustive health timing using Jyotish and KP:
-
-**KP Health Analysis**: Report the H1 sub lord, what houses it signifies (H6, H8, H12 = challenge; H1, H5, H11 = vitality), and KP predicted periods for health sensitivity.
-
-**Current Mahadasha**: does it rule 6th/8th/12th (health sensitivity) or 1st/5th/9th (protection and recovery)?
-Natural planetary nature for health (Jupiter = protective, Saturn/Rahu = challenging). Overall health verdict for this Mahadasha.
-
-**Current Antardasha**: immediate health conditions. Does it activate disease houses?
-
-**Current Pratyantar**: next few months — health sensitivity or strength?
-
-**Upcoming health-sensitive periods (next 5 years)**: identify each 6th/8th/12th lord activation with dates.
-
-**Recovery and peak vitality periods**: when does health improve and strengthen?
-
-**IMPORTANT: Health dasha timing indicates sensitivity periods requiring vigilance — not certainty of illness.**
-
-**DISCLAIMER: Jyotish analysis only — consult medical professionals.**`, ctx) },
-      { id: 'h5', title: '5. Current Health Transits', prompt: ctx => makePrompt(`Current planetary transits for health:
-
-**Saturn transit**: which natal house? If over lagna or Moon = significant health sensitivity. Sade Sati active? Which phase (1st/2nd/3rd)? Duration remaining. Specific health domain affected.
-
-**Jupiter transit**: aspecting lagna or lagna lord? Which house? Protective or neutral? Duration.
-
-**Rahu-Ketu axis**: Rahu over lagna or Moon = mental health pressure, unusual health events.
-
-**Mars transit**: over 6th or 8th = heightened inflammation, accident risk, surgical procedures.
-
-**Net health transit picture**: supportive or stressing? Are dasha and transits aligned (higher impact)?
-
-**Upcoming high-risk transit combinations** in next 6–12 months — name each and its implication.
-
-**DISCLAIMER: Consult medical professionals for health decisions.**`, ctx) },
-      { id: 'h6', title: '6. Health — Final Synthesis', prompt: ctx => makePrompt(`Comprehensive final health analysis:
-
-**PART A — Constitutional Profile**
-- Overall constitution rating: Robust / Moderately Strong / Moderate / Delicate — with evidence
-- Primary body systems to monitor (specific organs, systems based on chart analysis)
-- Constitutional strengths (what keeps this person naturally healthy)
-- Constitutional vulnerabilities (what creates health sensitivity)
-
-**PART B — Mental Health Profile**
-- Moon's condition and emotional baseline
-- Chronic emotional tendencies (anxiety, depression, restlessness, stability)
-- When is mental health most stable vs most challenged?
-
-**PART C — Timing Predictions**
-- **Near term (6 months)**: health conditions [Confidence + Evidence]
-- **Medium term (1–3 years)**: sensitive periods, recovery windows [Confidence + Evidence]
-- **Long term (3–7 years)**: overall health trajectory
-
-**PART D — Lifestyle Guidance**
-- Health practices aligned with this chart's planetary signatures
-- Body systems to proactively support
-- Lifestyle adjustments suggested by planetary weaknesses
-- Optimal timing for medical checkups or procedures
-- One immediate health insight
-
-**MANDATORY DISCLAIMER: This is Jyotish analysis for educational and self-awareness purposes only. Not medical advice. Always consult qualified medical professionals for health decisions.**`, ctx) },
+End with: **Bottom line:** [health timing verdict in 1–2 sentences]`,
+      },
     ],
   };
   return defs[type];
@@ -444,34 +301,53 @@ interface StreamResult {
   content: string;
 }
 
+function parseSSELines(buf: string): { content: string; finishReason: string | null; remaining: string } {
+  let content = '';
+  let finishReason: string | null = null;
+  const events = buf.split('\n\n');
+  const remaining = events.pop() ?? '';
+  for (const event of events) {
+    for (const line of event.split('\n')) {
+      const t = line.trim();
+      if (!t || t === 'data: [DONE]' || !t.startsWith('data: ')) continue;
+      try {
+        const json = JSON.parse(t.slice(6));
+        const delta = json?.choices?.[0]?.delta?.content;
+        const fr = json?.choices?.[0]?.finish_reason;
+        if (typeof delta === 'string' && delta) content += delta;
+        if (typeof fr === 'string' && fr && fr !== 'null') finishReason = fr;
+      } catch { /* skip */ }
+    }
+  }
+  return { content, finishReason, remaining };
+}
+
 async function streamSection(
-  prompt: string,
+  sectionDef: SectionDef,
+  chartContext: import('@luckyray/shared').ChartContext,
   signal: AbortSignal,
   onChunk: (text: string, waitingMsg?: string) => void,
 ): Promise<StreamResult> {
-  const MAX_PASSES = 5;           // up to 5 continuation passes
-  const MAX_ATTEMPTS_PER_PASS = 4; // up to 4 retries per pass
+  const MAX_PASSES = 4;
+  const MAX_ATTEMPTS_PER_PASS = 3;
   let fullContent = '';
+  let conversationMessages: { role: 'user' | 'assistant'; content: string }[] = [];
 
-  for (let pass = 0; pass <= MAX_PASSES; pass++) {
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
     if (signal.aborted) return { outcome: 'aborted', content: fullContent };
 
-    const TAIL = 800;
-    const messages =
+    const messages: { role: 'user' | 'assistant'; content: string }[] =
       pass === 0
-        ? [{ role: 'user', content: prompt }]
+        ? [{ role: 'user', content: sectionDef.prompt }]
         : [
-            {
-              role: 'user',
-              content: `You are writing a detailed Jyotish analysis. The response was cut off. Continue EXACTLY from where it stopped — do not repeat anything, do not add a preamble. Here is the last part written:\n\n"...${fullContent.slice(-TAIL)}"\n\nContinue the analysis seamlessly until the section is fully complete.`,
-            },
+            ...conversationMessages,
+            { role: 'user', content: 'Continue from exactly where you stopped. Do not repeat anything already written.' },
           ];
 
     let finishReason: string | null = null;
     let passContent = '';
     let passSucceeded = false;
 
-    // Retry loop for rate limits / transient errors
     for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_PASS; attempt++) {
       if (signal.aborted) return { outcome: 'aborted', content: fullContent };
 
@@ -482,103 +358,95 @@ async function streamSection(
           signal,
           body: JSON.stringify({
             messages,
+            chartContext,
+            systemPromptOverride: REPORT_SYSTEM_PROMPT,
             model: 'meta/llama-3.1-70b-instruct',
             stream: true,
-            maxTokens: 4096,
+            maxTokens: 2048,
           }),
         });
 
         if (!response.ok) {
-          const errText = await response.text().catch(() => '');
           const status = response.status;
-
           if (status === 429) {
-            // Rate limit — wait before retrying
             const retryAfterHeader = response.headers.get('retry-after');
             const waitSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 45 + attempt * 30;
-            const waitMs = waitSec * 1000;
-            onChunk(fullContent, `Rate limited — waiting ${waitSec}s before retry…`);
-            await new Promise(r => setTimeout(r, waitMs));
-            continue; // retry this pass
-          }
-
-          if (status >= 500 || status === 503) {
-            // Server error — short wait then retry
-            const waitSec = 10 + attempt * 15;
-            onChunk(fullContent, `Server error (${status}) — waiting ${waitSec}s…`);
+            onChunk(fullContent, `Rate limited — waiting ${waitSec}s…`);
             await new Promise(r => setTimeout(r, waitSec * 1000));
             continue;
           }
-
-          // Non-retryable error
-          throw new Error(`HTTP ${status}: ${errText}`);
+          if (status >= 500) {
+            const waitSec = 10 + attempt * 15;
+            onChunk(fullContent, `Server error (${status}) — retrying in ${waitSec}s…`);
+            await new Promise(r => setTimeout(r, waitSec * 1000));
+            continue;
+          }
+          throw new Error(`HTTP ${status}`);
         }
 
-        // Read the stream
         const reader = response.body?.getReader();
         if (!reader) throw new Error('No response body');
-
         const decoder = new TextDecoder();
         let buf = '';
         finishReason = null;
         passContent = '';
 
-        while (true) {
-          if (signal.aborted) { reader.cancel(); break; }
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buf += decoder.decode(value, { stream: true });
-          const lines = buf.split('\n');
-          buf = lines.pop() ?? '';
-
-          for (const line of lines) {
-            const t = line.trim();
-            if (!t || t === 'data: [DONE]') continue;
-            if (!t.startsWith('data: ')) continue;
-            try {
-              const json = JSON.parse(t.slice(6));
-              const delta: string | undefined = json?.choices?.[0]?.delta?.content;
-              const reason: string | null = json?.choices?.[0]?.finish_reason ?? null;
-              if (reason) finishReason = reason;
-              if (typeof delta === 'string' && delta.length > 0) {
-                passContent += delta;
-                fullContent += delta;
-                onChunk(fullContent);
-              }
-            } catch { /* skip malformed */ }
+        try {
+          while (true) {
+            if (signal.aborted) { reader.cancel(); break; }
+            const { done, value } = await reader.read();
+            if (done) break;
+            buf += decoder.decode(value, { stream: true });
+            const { content, finishReason: fr, remaining } = parseSSELines(buf);
+            buf = remaining;
+            if (content) { passContent += content; fullContent += content; onChunk(fullContent); }
+            if (fr) finishReason = fr;
           }
+          // flush leftover
+          if (buf.trim()) {
+            const { content, finishReason: fr } = parseSSELines(buf + '\n\n');
+            if (content) { passContent += content; fullContent += content; onChunk(fullContent); }
+            if (fr) finishReason = fr;
+          }
+        } finally {
+          reader.releaseLock();
         }
 
         passSucceeded = true;
-        break; // exit retry loop — got a good response
-
+        break;
       } catch (err) {
         if (signal.aborted) return { outcome: 'aborted', content: fullContent };
         const waitSec = 15 + attempt * 20;
-        onChunk(fullContent, `Connection error — waiting ${waitSec}s (attempt ${attempt + 1}/${MAX_ATTEMPTS_PER_PASS})…`);
+        onChunk(fullContent, `Connection error — retrying in ${waitSec}s…`);
         await new Promise(r => setTimeout(r, waitSec * 1000));
       }
     }
 
     if (signal.aborted) return { outcome: 'aborted', content: fullContent };
-
     if (!passSucceeded) {
-      // All retries exhausted for this pass
-      if (fullContent.length > 0) return { outcome: 'done', content: fullContent };
-      return { outcome: 'error', content: fullContent };
+      return fullContent.length > 0 ? { outcome: 'done', content: fullContent } : { outcome: 'error', content: fullContent };
     }
 
-    // Natural stop — section complete
-    if (finishReason === 'stop' || passContent.length === 0) {
+    if (finishReason !== 'length' || !passContent) {
       return { outcome: 'done', content: fullContent };
     }
 
-    // Hit token limit — continue in next pass
-    if (pass < MAX_PASSES) {
-      onChunk(fullContent, `Continuing (part ${pass + 2})…`);
-      await new Promise(r => setTimeout(r, 2000));
+    // Continue: build conversation context for next pass
+    if (pass === 0) {
+      conversationMessages = [
+        { role: 'user', content: sectionDef.prompt },
+        { role: 'assistant', content: passContent },
+      ];
+    } else {
+      conversationMessages = [
+        ...conversationMessages,
+        { role: 'user', content: 'Continue from exactly where you stopped.' },
+        { role: 'assistant', content: passContent },
+      ];
     }
+
+    onChunk(fullContent, `Continuing…`);
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   return { outcome: 'done', content: fullContent };
@@ -812,8 +680,7 @@ export default function ReportsPage() {
 
     const sections = getSections(reportType);
     const gochar = computeCurrentGochar(storedChart.chart.ascendant.signIndex);
-    const ctx = buildChartContext(storedChart.chart, reportType, gochar.planets);
-    const chartCtx = serializeChartContext(ctx);
+    const chartContext = buildChartContext(storedChart.chart, reportType, gochar.planets);
 
     setReports(prev => ({
       ...prev,
@@ -842,7 +709,8 @@ export default function ReportsPage() {
       const sectionKey = `${reportType}-${i}`;
 
       const result = await streamSection(
-        section.prompt(chartCtx),
+        section,
+        chartContext,
         ctrl.signal,
         (fullText, waitMsg) => {
           updateSectionContent(reportType, i, fullText);

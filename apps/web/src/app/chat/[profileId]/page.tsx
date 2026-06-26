@@ -96,6 +96,9 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Token batching: accumulate in a ref, flush to React state at most once per animation frame
+  const tokenAccumRef = useRef('');
+  const rafRef = useRef<number | null>(null);
   const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming } = useAppStore();
 
   const chartContext = storedChart?.chart
@@ -115,9 +118,24 @@ export default function ChatPage() {
   const { send, abort } = useAIChat({
     chartContext,
     onToken: (token) => {
-      setStreamingText(prev => prev + token);
+      // Batch token appends into a single RAF-gated state update.
+      // Without this, 100 tokens/sec = 100 setState calls/sec = browser choke.
+      tokenAccumRef.current += token;
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(() => {
+          setStreamingText(tokenAccumRef.current);
+          rafRef.current = null;
+        });
+      }
     },
     onComplete: async (fullText) => {
+      // Cancel any pending RAF and do one final flush
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      tokenAccumRef.current = '';
+
       setIsStreaming(false);
       setStoreStreaming(false);
       setStreamingText('');
@@ -137,6 +155,8 @@ export default function ChatPage() {
       await updateConversation(conversation.id, { updatedAt: now });
     },
     onError: (errMsg) => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      tokenAccumRef.current = '';
       setIsStreaming(false);
       setStoreStreaming(false);
       setStreamingText('');
@@ -224,6 +244,9 @@ export default function ChatPage() {
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
 
+    tokenAccumRef.current = '';
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    setStreamingText('');
     setIsStreaming(true);
     setStoreStreaming(true);
 
@@ -237,10 +260,14 @@ export default function ChatPage() {
 
   const handleAbort = () => {
     abort();
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    const captured = tokenAccumRef.current;
+    tokenAccumRef.current = '';
     setIsStreaming(false);
     setStoreStreaming(false);
-    if (streamingText) {
-      const partial = streamingText + ' _(response stopped)_';
+    const abortedText = streamingText || captured;
+    if (abortedText) {
+      const partial = abortedText + ' _(response stopped)_';
       if (conversation) {
         const msg: Message = {
           id: crypto.randomUUID(),

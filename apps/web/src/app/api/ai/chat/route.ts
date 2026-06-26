@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
     model?: string;
     stream?: boolean;
     maxTokens?: number;
+    systemPromptOverride?: string; // replaces buildSystemPrompt+buildRulesPrompt entirely
   };
 
   try {
@@ -32,19 +33,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS } = body;
+  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride } = body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
   }
 
-  // Build system messages
+  // Build system content: caller-supplied override takes full precedence
   const chartText = chartContext ? serializeChartContext(chartContext) : '';
-  const systemContent = [
-    buildSystemPrompt(),
-    buildRulesPrompt(),
-    chartText,
-  ].filter(Boolean).join('\n\n');
+  const systemContent = systemPromptOverride
+    ? [systemPromptOverride, chartText].filter(Boolean).join('\n\n')
+    : [buildSystemPrompt(), buildRulesPrompt(), chartText].filter(Boolean).join('\n\n');
 
   const apiMessages = [
     { role: 'system', content: systemContent },
