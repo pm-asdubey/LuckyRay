@@ -32,6 +32,7 @@ import { detectYogas } from './yogas';
 import { detectDoshas } from './doshas';
 import { computeVimshottariDasha } from './dashas';
 import { computeNavamsa, computeDashamsa } from './divisional';
+import { computeKP } from './kp';
 
 export const ENGINE_VERSION = '1.0.0';
 
@@ -39,6 +40,7 @@ export { formatDashaDuration } from './dashas';
 export { signIndexToHouse } from './houses';
 export { computeCurrentGochar, checkSadeSati } from './gochar';
 export { serializeChartInterpretation } from './interpreter';
+export { serializeKPInterpretation } from './kp';
 
 export interface ChartGenerationInput {
   profile: Pick<Profile, 'id' | 'name' | 'gender'>;
@@ -115,6 +117,18 @@ export function generateChart(input: ChartGenerationInput): ChartResult {
     const D9 = computeNavamsa(planets, ascendantSidereal);
     const D10 = computeDashamsa(planets, ascendantSidereal);
 
+    // KP (Krishnamurti Paddhati) analysis — Placidus cusps + sublord predictions
+    const kp = computeKP({
+      ascendantTropical,
+      ramc: astronomy.ramc,
+      obliquityDeg: astronomy.obliquityDeg,
+      ayanamsa: astronomyData.ayanamsa,
+      latitude: birthDetails.latitude,
+      planets: planets.map(p => ({ planet: p.id, siderealLongitude: p.siderealLongitude })),
+      dashas,
+      birthDate: birthDetails.date,
+    });
+
     const durationMs = Date.now() - startTime;
 
     const chart: CanonicalChart = {
@@ -138,6 +152,7 @@ export function generateChart(input: ChartGenerationInput): ChartResult {
       doshas,
       dashas,
       divisionalCharts: { D9, D10 },
+      kp,
       metadata: {
         engineVersion: ENGINE_VERSION,
         calculatedAt: new Date().toISOString(),
@@ -147,6 +162,7 @@ export function generateChart(input: ChartGenerationInput): ChartResult {
           'Whole Sign house system (Parashari)',
           'Lahiri (Chitrapaksha) ayanamsa',
           'Vimshottari Dasha system',
+          'KP: Placidus house cusps, Vimshottari sublord table',
           'Special aspects for Rahu/Ketu: 5th and 9th (Parashari view)',
           'Manglik Dosha: counted from Lagna only',
         ],

@@ -23,13 +23,14 @@ import { formatShortDate, downloadJson, formatDegrees } from '@/lib/utils';
 import { exportChartAsJson } from '@luckyray/storage';
 import { cn } from '@/lib/utils';
 
-type TabId = 'chart' | 'planets' | 'dashas' | 'yogas';
+type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp';
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: 'chart', label: 'Chart' },
+  { id: 'chart',   label: 'Chart' },
   { id: 'planets', label: 'Planets' },
-  { id: 'dashas', label: 'Dashas' },
-  { id: 'yogas', label: 'Yogas' },
+  { id: 'dashas',  label: 'Dashas' },
+  { id: 'yogas',   label: 'Yogas' },
+  { id: 'kp',      label: 'KP' },
 ];
 
 export default function ChartPage() {
@@ -324,6 +325,10 @@ export default function ChartPage() {
                     <YogaList yogas={chart.yogas} />
                   </div>
                 )}
+
+                {activeTab === 'kp' && (
+                  <KPView kp={chart.kp} />
+                )}
               </div>
             </div>
           )}
@@ -331,6 +336,194 @@ export default function ChartPage() {
         <BottomNav />
       </div>
     </AppShell>
+  );
+}
+
+// ─── KP View ─────────────────────────────────────────────────────────────────
+
+const PROMISE_COLORS = {
+  true:  'text-green-400 border-green-900/40 bg-green-950/20',
+  false: 'text-red-400 border-red-900/40 bg-red-950/20',
+};
+
+const CONFIDENCE_COLORS = {
+  high:   'bg-green-900/30 text-green-400 border border-green-800/30',
+  medium: 'bg-amber-900/30 text-amber-400 border border-amber-800/30',
+  low:    'bg-surface-elevated text-content-muted border border-surface-border',
+};
+
+const TOPIC_LABELS: Record<string, string> = {
+  career:   'Career & Profession',
+  marriage: 'Love & Marriage',
+  wealth:   'Wealth & Finance',
+  health:   'Health & Vitality',
+  children: 'Children',
+  foreign:  'Foreign / Travel',
+};
+
+function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefined }) {
+  const [openTopic, setOpenTopic] = useState<string | null>('career');
+
+  if (!kp) {
+    return (
+      <div className="text-sm text-content-muted p-4 rounded-xl border border-dashed border-surface-border">
+        KP data not available. Regenerate the chart to compute KP analysis.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      {/* System note */}
+      <p className="text-2xs text-content-subtle bg-surface-elevated rounded-lg px-3 py-2 border border-surface-border">
+        KP uses <strong className="text-content-muted">Placidus cusps</strong> (not Whole Sign). Planet house positions here may differ from the main chart.
+        Sub lords are computed from the Vimshottari table — deterministically, not by AI.
+      </p>
+
+      {/* House Cusps */}
+      <section>
+        <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider mb-3">
+          Placidus House Cusps
+        </h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          {kp.cusps.map(cusp => {
+            const deg = Math.floor(cusp.degreesInSign);
+            const min = Math.round((cusp.degreesInSign - deg) * 60);
+            return (
+              <div key={cusp.house} className="rounded-lg border border-surface-border bg-surface-elevated px-3 py-2.5 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-5 w-5 rounded-md bg-accent-subtle flex items-center justify-center text-2xs font-bold text-accent flex-shrink-0">
+                    {cusp.house}
+                  </span>
+                  <span className="text-xs font-medium text-content">{cusp.sign} {deg}°{String(min).padStart(2,'0')}'</span>
+                </div>
+                <div className="text-2xs text-content-subtle leading-tight">
+                  {cusp.nakshatra}
+                </div>
+                <div className="text-2xs text-content-muted leading-tight">
+                  ⋆ {cusp.nakshatraLord} &nbsp;·&nbsp; Sub: {cusp.subLord}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Ruling Planets */}
+      <section>
+        <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider mb-2">
+          Ruling Planets
+        </h3>
+        <div className="flex flex-wrap gap-2 text-xs text-content-muted">
+          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
+            Asc Star Lord: <strong className="text-content">{kp.rulingPlanets.ascStarLord}</strong>
+          </span>
+          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
+            Asc Sub Lord: <strong className="text-content">{kp.rulingPlanets.ascSubLord}</strong>
+          </span>
+          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
+            Moon Star: <strong className="text-content">{kp.rulingPlanets.moonStarLord}</strong>
+          </span>
+          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
+            Moon Sub: <strong className="text-content">{kp.rulingPlanets.moonSubLord}</strong>
+          </span>
+          <span className="rounded-md bg-surface-elevated border border-surface-border px-2 py-1">
+            Day Lord: <strong className="text-content">{kp.rulingPlanets.dayLord}</strong>
+          </span>
+        </div>
+      </section>
+
+      {/* Event Promise & Periods */}
+      <section>
+        <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider mb-3">
+          Event Promise Analysis
+        </h3>
+        <p className="text-2xs text-content-subtle mb-3">
+          A promise exists when the sub lord of the primary cusp signifies the relevant houses.
+          Predicted periods are computed deterministically — no AI required.
+        </p>
+        <div className="space-y-2">
+          {kp.events.map(ev => (
+            <div key={ev.topic} className="rounded-xl border border-surface-border overflow-hidden">
+              {/* Header row */}
+              <button
+                className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-elevated/50 transition-colors"
+                onClick={() => setOpenTopic(openTopic === ev.topic ? null : ev.topic)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className={cn(
+                    'inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold border',
+                    ev.isPromised ? PROMISE_COLORS.true : PROMISE_COLORS.false,
+                  )}>
+                    {ev.isPromised ? 'PROMISED' : 'UNCLEAR'}
+                  </span>
+                  <span className="text-sm font-medium text-content">
+                    {TOPIC_LABELS[ev.topic] ?? ev.topic}
+                  </span>
+                  <span className="text-2xs text-content-subtle">
+                    H{ev.relevantHouses.join(', H')}
+                  </span>
+                </div>
+                <span className="text-content-subtle text-xs">
+                  {openTopic === ev.topic ? '▲' : '▼'}
+                </span>
+              </button>
+
+              {/* Expanded */}
+              {openTopic === ev.topic && (
+                <div className="border-t border-surface-border px-4 py-4 space-y-4 bg-surface">
+                  {/* Promise detail */}
+                  <div className="space-y-1">
+                    <div className="text-2xs text-content-muted">
+                      <strong>H{ev.primaryHouse} Sub Lord:</strong> {ev.primaryCuspSubLord}
+                      {' · Signifies: '}
+                      {ev.sublordSignifies.length > 0 ? ev.sublordSignifies.map(h => `H${h}`).join(', ') : 'none'}
+                    </div>
+                    <div className="text-2xs text-content-muted">{ev.promiseReason}</div>
+                    <div className="text-2xs text-content-subtle">
+                      Significators: {ev.significators.join(' · ') || '—'}
+                    </div>
+                  </div>
+
+                  {/* Predicted periods */}
+                  {ev.predictedPeriods.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="text-2xs font-semibold text-content-muted uppercase tracking-wider">
+                        Predicted Favorable Periods
+                      </div>
+                      {ev.predictedPeriods.map((period, i) => (
+                        <div key={i} className="rounded-lg border border-surface-border p-3 space-y-1 bg-surface-elevated">
+                          <div className="flex items-center gap-2">
+                            <span className={cn('text-2xs font-semibold rounded px-1.5 py-0.5', CONFIDENCE_COLORS[period.confidence])}>
+                              {period.confidence.toUpperCase()}
+                            </span>
+                            <span className="text-xs font-semibold text-content">
+                              {period.mahadasha} MD / {period.antardasha} AD
+                            </span>
+                          </div>
+                          <div className="text-2xs text-content-subtle">
+                            {period.startDate} — {period.endDate}
+                          </div>
+                          <div className="text-2xs text-content-muted leading-relaxed">
+                            {period.reason}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-2xs text-content-muted italic">
+                      {ev.isPromised
+                        ? 'No upcoming favorable periods found in visible dasha span.'
+                        : 'Event not clearly promised — no periods predicted.'}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 

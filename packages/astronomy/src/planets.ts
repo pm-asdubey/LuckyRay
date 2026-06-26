@@ -85,6 +85,21 @@ function getPlanetTropicalLongitude(body: Astronomy.Body, date: Date): {
 }
 
 /**
+ * Compute Local Sidereal Time in degrees (= RAMC for KP computations).
+ * Exported so the KP engine can use it directly.
+ */
+export function computeRAMC(date: Date, longitude: number): number {
+  return computeLocalSiderealTime(date, longitude);
+}
+
+/**
+ * Compute mean obliquity of the ecliptic in degrees (exported for KP).
+ */
+export function computeObliquityDeg(date: Date): number {
+  return computeObliquity(date) * 180 / Math.PI;
+}
+
+/**
  * Compute mean obliquity of the ecliptic using IAU 1976 formula.
  */
 function computeObliquity(date: Date): number {

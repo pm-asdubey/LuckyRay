@@ -204,6 +204,71 @@ export interface DivisionalChart {
   planets: DivisionalChartPlanet[];
 }
 
+// ─── KP (Krishnamurti Paddhati) Types ────────────────────────────────────────
+
+export type KPTopicId = 'career' | 'marriage' | 'wealth' | 'health' | 'children' | 'foreign';
+
+export interface KPCusp {
+  house: number;
+  longitude: number;       // sidereal, 0-360
+  sign: SignId;
+  signIndex: number;
+  degreesInSign: number;   // 0-30
+  nakshatra: NakshatraName;
+  nakshatraLord: PlanetId;
+  subLord: PlanetId;
+  subSubLord: PlanetId;
+}
+
+export interface KPPlanetInfo {
+  planet: PlanetId;
+  house: number;           // Placidus house (1-12)
+  nakshatraLord: PlanetId;
+  subLord: PlanetId;
+  subSubLord: PlanetId;
+}
+
+export interface KPHouseSignificators {
+  house: number;
+  significators: PlanetId[];
+}
+
+export interface KPPredictedPeriod {
+  mahadasha: PlanetId;
+  antardasha: PlanetId;
+  pratyantar?: PlanetId;
+  startDate: string;
+  endDate: string;
+  confidence: 'high' | 'medium' | 'low';
+  reason: string;
+}
+
+export interface KPEventAnalysis {
+  topic: KPTopicId;
+  relevantHouses: number[];
+  primaryHouse: number;
+  primaryCuspSubLord: PlanetId;
+  sublordSignifies: number[];
+  isPromised: boolean;
+  promiseReason: string;
+  significators: PlanetId[];
+  predictedPeriods: KPPredictedPeriod[];
+}
+
+export interface KPData {
+  cusps: KPCusp[];
+  planets: KPPlanetInfo[];
+  significators: KPHouseSignificators[];
+  events: KPEventAnalysis[];
+  rulingPlanets: {
+    ascStarLord: PlanetId;
+    ascSubLord: PlanetId;
+    moonStarLord: PlanetId;
+    moonSubLord: PlanetId;
+    dayLord: PlanetId;
+  };
+}
+
 // ─── Canonical Chart ─────────────────────────────────────────────────────────
 
 export interface CanonicalChart {
@@ -230,6 +295,7 @@ export interface CanonicalChart {
     D9: DivisionalChart;
     D10: DivisionalChart;
   };
+  kp: KPData;
   metadata: {
     engineVersion: string;
     calculatedAt: string;

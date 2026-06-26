@@ -26,11 +26,11 @@
 
 import type { BirthDetails, AstronomyData } from '@luckyray/shared';
 import { computeLahiriAyanamsa, dateToJulianDay } from './ayanamsa';
-import { computeAllPlanetPositions, computeAscendantTropical } from './planets';
+import { computeAllPlanetPositions, computeAscendantTropical, computeRAMC, computeObliquityDeg } from './planets';
 
 export type { RawPlanetPosition } from './planets';
 export { computeLahiriAyanamsa, dateToJulianDay, julianDayToDate } from './ayanamsa';
-export { computeAllPlanetPositions, computeAscendantTropical } from './planets';
+export { computeAllPlanetPositions, computeAscendantTropical, computeRAMC, computeObliquityDeg } from './planets';
 
 export interface AstronomyInput {
   birthDetails: BirthDetails;
@@ -49,6 +49,8 @@ export interface AstronomyOutput {
   ascendantTropical: number;
   ascendantSidereal: number;
   localSiderealTime: number;
+  ramc: number;          // Right Ascension of Midheaven (= Local Sidereal Time in degrees)
+  obliquityDeg: number;  // Mean obliquity of ecliptic in degrees
 }
 
 /**
@@ -93,12 +95,17 @@ export function computeAstronomy(input: AstronomyInput): AstronomyOutput {
     calculatedAt,
   };
 
+  const ramc = computeRAMC(utcDate, birthDetails.longitude);
+  const obliquityDeg = computeObliquityDeg(utcDate);
+
   return {
     astronomyData,
     rawPlanets: enrichedPlanets,
     ascendantTropical,
     ascendantSidereal,
     localSiderealTime,
+    ramc,
+    obliquityDeg,
   };
 }
 

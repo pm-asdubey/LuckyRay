@@ -122,8 +122,13 @@ export function serializeChartContext(context: ChartContext): string {
   if (canonical) {
     // Lazy import to keep the ai package from depending on jyotish at type-check time
     // The actual import is at runtime — both packages are in the same monorepo
-    const { serializeChartInterpretation } = require('@luckyray/jyotish');
+    const { serializeChartInterpretation, serializeKPInterpretation } = require('@luckyray/jyotish');
     let text: string = serializeChartInterpretation(canonical);
+
+    // Append KP analysis section
+    if (canonical.kp) {
+      text += '\n' + serializeKPInterpretation(canonical);
+    }
 
     // Append gochar section
     if (context.gochar && context.gochar.length > 0) {

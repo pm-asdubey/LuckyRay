@@ -273,22 +273,23 @@ async function streamSection(
   signal: AbortSignal,
   onChunk: (text: string) => void,
 ): Promise<'done' | 'error'> {
-  const MAX_CONTINUATIONS = 4;
+  const MAX_CONTINUATIONS = 3;
   let fullContent = '';
 
   for (let pass = 0; pass <= MAX_CONTINUATIONS; pass++) {
     if (signal.aborted) return 'error';
 
+    // For continuation passes: send a compact message only — NOT the full prompt again.
+    // The full prompt + 4096 tokens of previous content would exceed practical limits.
+    // Instead, give just a short reminder + the tail of what was written.
+    const TAIL_CHARS = 600;
     const messages =
       pass === 0
         ? [{ role: 'user', content: prompt }]
         : [
-            { role: 'user', content: prompt },
-            { role: 'assistant', content: fullContent },
             {
               role: 'user',
-              content:
-                'You were cut off mid-analysis. Continue EXACTLY from where you stopped — do not repeat anything already written. Pick up from the last incomplete sentence or point and carry on until the section is fully complete.',
+              content: `You are writing a Jyotish analysis section that was cut off. Continue EXACTLY from where it stopped — do not repeat anything. Here is the last part of what was already written:\n\n"...${fullContent.slice(-TAIL_CHARS)}"\n\nPick up seamlessly from the cut-off point and complete the analysis.`,
             },
           ];
 
@@ -430,7 +431,8 @@ export default function ReportsPage() {
 
       for (let attempt = 0; attempt < 2; attempt++) {
         if (ctrl.signal.aborted) break;
-        if (attempt > 0) await new Promise(r => setTimeout(r, 5000));
+        // Longer backoff on retry — NVIDIA rate limits typically need 15-30s to recover
+        if (attempt > 0) await new Promise(r => setTimeout(r, 20000));
 
         const result = await streamSection(
           section.prompt(chartCtx),
@@ -481,7 +483,8 @@ export default function ReportsPage() {
       }
 
       if (i < sections.length - 1 && !ctrl.signal.aborted) {
-        await new Promise(r => setTimeout(r, 2000));
+        // 6s pause between sections avoids NVIDIA rate limit (30 RPM default)
+        await new Promise(r => setTimeout(r, 6000));
       }
     }
 
