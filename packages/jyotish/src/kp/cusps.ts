@@ -5,19 +5,27 @@
  * computed from the RAMC (Right Ascension of Midheaven), geographic
  * latitude, and obliquity of the ecliptic.
  *
- * Method: Iterative convergence (20 iterations per cusp).
- *   - MC (cusp 10): atan2(sin(RAMC), cos(RAMC)×cos(ε))
- *   - ASC (cusp 1): already computed by astronomy layer
- *   - Intermediate (11,12,2,3): Placidus condition, iterated
- *   - Opposite cusps (4,5,6,7,8,9): +180°
+ * Method: Iterative convergence (30 iterations per cusp).
  *
- * Placidus condition for cusp H:
- *   (RAMC - RA_H) = fraction × SDA_H
- *   where SDA_H = arccos(-tan(φ)×tan(D_H))
+ * Placidus conditions (all in RA degrees, diurnal motion = increasing RA):
+ *
+ *   Above horizon (H11, H12 — between MC and ASC going forward in RA):
+ *     (RA_cusp - RAMC) = fraction × SDA_cusp
+ *     H11: fraction = 1/3  (closer to MC)
+ *     H12: fraction = 2/3  (closer to ASC)
+ *
+ *   Below horizon (H2, H3 — between ASC and IC going forward in RA):
+ *     (RAIC - RA_cusp) = fraction × SNA_cusp
+ *     H2:  fraction = 2/3  (closer to ASC, further from IC)
+ *     H3:  fraction = 1/3  (closer to IC)
+ *
+ *   Opposite cusps:
+ *     H4=IC, H7=DESC, H10=MC, H1=ASC are exact.
+ *     H5=H11+180°, H6=H12+180°, H8=H2+180°, H9=H3+180°
  *
  * References:
- *   Jean Meeus, "Astronomical Algorithms", 2nd ed., ch. 14
- *   Robert Hand, "Planets in Transit"
+ *   Jean Meeus, "Astronomical Algorithms", 2nd ed., ch. 24
+ *   K.S. Krishnamurti, "Krishnamurti Padhdhati"
  */
 
 const D2R = Math.PI / 180;
@@ -29,7 +37,6 @@ function norm360(d: number): number {
 
 /**
  * Compute MC (Midheaven) ecliptic longitude from RAMC and obliquity.
- * Both inputs in degrees. Returns tropical longitude in degrees.
  */
 function computeMC(ramcDeg: number, obliquityDeg: number): number {
   const RAMC = ramcDeg * D2R;
@@ -39,8 +46,7 @@ function computeMC(ramcDeg: number, obliquityDeg: number): number {
 }
 
 /**
- * Given an ecliptic longitude (tropical, degrees), compute its Right Ascension
- * and Declination using the obliquity of the ecliptic.
+ * Convert ecliptic longitude (tropical, degrees) to equatorial RA and Dec.
  */
 function eclipticToEquatorial(lonDeg: number, obliquityDeg: number): { ra: number; dec: number } {
   const lon = lonDeg * D2R;
@@ -52,27 +58,26 @@ function eclipticToEquatorial(lonDeg: number, obliquityDeg: number): { ra: numbe
 
 /**
  * Semi-diurnal arc for a point with declination D at latitude φ (degrees).
- * Returns SDA in degrees. Circumpolar → 180°, always-below-horizon → 0°.
+ * Returns SDA in degrees. Circumpolar → 180°, never rises → 0°.
  */
 function semiDiurnalArc(decDeg: number, latDeg: number): number {
   const D   = decDeg * D2R;
   const phi = latDeg * D2R;
   const cosH = -Math.tan(phi) * Math.tan(D);
-  if (cosH >= 1)  return 0;    // never rises
-  if (cosH <= -1) return 180;  // circumpolar
+  if (cosH >= 1)  return 0;
+  if (cosH <= -1) return 180;
   return Math.acos(cosH) * R2D;
 }
 
 /**
- * Compute one Placidus intermediate cusp by iteration.
+ * Iterate to find an ABOVE-HORIZON Placidus cusp (H11 or H12).
  *
- * @param ramcDeg     RAMC in degrees
- * @param obliquityDeg obliquity in degrees
- * @param latDeg      geographic latitude in degrees
- * @param fraction    2/3 for 11th, 1/3 for 12th
- * @param initialEst  initial tropical longitude estimate
+ * Condition: (RA_cusp - RAMC) = fraction × SDA_cusp
+ * H11: fraction=1/3  H12: fraction=2/3
+ *
+ * These cusps have higher RA than RAMC (come after MC in sidereal time).
  */
-function iteratePlacidus(
+function iteratePlacidusAbove(
   ramcDeg: number,
   obliquityDeg: number,
   latDeg: number,
@@ -81,30 +86,32 @@ function iteratePlacidus(
 ): number {
   let lambda = initialEst;
 
-  for (let iter = 0; iter < 30; iter++) {
+  for (let iter = 0; iter < 40; iter++) {
     const { ra, dec } = eclipticToEquatorial(lambda, obliquityDeg);
     const sda = semiDiurnalArc(dec, latDeg);
 
-    // Meridian distance from MC
-    let md = norm360(ramcDeg - ra);
-    if (md > 180) md = 360 - md;   // take the shorter arc from MC
+    // Meridian distance from MC going FORWARD (toward ASC via H11/H12)
+    let md = norm360(ra - ramcDeg);
+    if (md > 180) md = 360 - md;
 
     const targetMD = fraction * sda;
     const residual = targetMD - md;
 
-    // Small correction: adjust longitude by residual (damped)
-    // dRA/dλ ≈ cos²(ε) for tropical points — use 0.8 as practical damping
-    const correction = residual * 0.9;
-    lambda = norm360(lambda + correction);
-
-    if (Math.abs(residual) < 0.0001) break;
+    lambda = norm360(lambda + residual * 0.85);
+    if (Math.abs(residual) < 0.00001) break;
   }
   return lambda;
 }
 
 /**
- * Compute Placidus intermediate cusps below the horizon (2nd and 3rd houses).
- * These use the Semi-Nocturnal Arc instead of the Semi-Diurnal Arc.
+ * Iterate to find a BELOW-HORIZON Placidus cusp (H2 or H3).
+ *
+ * Condition: (RAIC - RA_cusp) = fraction × SNA_cusp
+ * H2: fraction=2/3  (closer to ASC)
+ * H3: fraction=1/3  (closer to IC)
+ *
+ * These cusps have lower RA than RAIC (come before IC in sidereal time,
+ * after ASC).
  */
 function iteratePlacidusBelow(
   ramcDeg: number,
@@ -114,24 +121,24 @@ function iteratePlacidusBelow(
   initialEst: number,
 ): number {
   let lambda = initialEst;
-  const RAIC = norm360(ramcDeg + 180); // Right Ascension of IC
+  const RAIC = norm360(ramcDeg + 180);
 
-  for (let iter = 0; iter < 30; iter++) {
+  for (let iter = 0; iter < 40; iter++) {
     const { ra, dec } = eclipticToEquatorial(lambda, obliquityDeg);
     const sda = semiDiurnalArc(dec, latDeg);
-    const sna = 180 - sda; // semi-nocturnal arc
+    const sna = 180 - sda;
 
-    // Meridian distance from IC
-    let md = norm360(ra - RAIC);
+    // Distance from IC going BACKWARD toward ASC (decreasing RA from RAIC)
+    let md = norm360(RAIC - ra);
     if (md > 180) md = 360 - md;
 
     const targetMD = fraction * sna;
     const residual = targetMD - md;
 
-    const correction = residual * 0.9;
-    lambda = norm360(lambda + correction);
-
-    if (Math.abs(residual) < 0.0001) break;
+    // RAIC - RA decreases as lambda increases (negative gradient),
+    // so the correction sign is opposite to the above-horizon case.
+    lambda = norm360(lambda - residual * 0.85);
+    if (Math.abs(residual) < 0.00001) break;
   }
   return lambda;
 }
@@ -145,7 +152,7 @@ function iteratePlacidusBelow(
  * @param ascTropical  Ascendant tropical longitude in degrees (from astronomy)
  * @param obliquityDeg Mean obliquity of ecliptic in degrees
  * @param latDeg       Geographic latitude in degrees
- * @returns Array of 12 tropical cusp longitudes, index 0 = Cusp 1 (ASC)
+ * @returns Array of 12 tropical cusp longitudes, index 0 = H1 (ASC)
  */
 export function computePlacidusLongitudes(
   ramcDeg: number,
@@ -153,23 +160,27 @@ export function computePlacidusLongitudes(
   obliquityDeg: number,
   latDeg: number,
 ): number[] {
-  const mc    = computeMC(ramcDeg, obliquityDeg);
-  const ic    = norm360(mc + 180);
-  const asc   = ascTropical;
-  const desc  = norm360(asc + 180);
+  const mc   = computeMC(ramcDeg, obliquityDeg);
+  const ic   = norm360(mc + 180);
+  const asc  = ascTropical;
+  const desc = norm360(asc + 180);
 
-  // Intermediate cusps (tropical)
-  const c11 = iteratePlacidus(ramcDeg, obliquityDeg, latDeg, 2 / 3, norm360(mc + 30));
-  const c12 = iteratePlacidus(ramcDeg, obliquityDeg, latDeg, 1 / 3, norm360(mc + 60));
-  const c2  = iteratePlacidusBelow(ramcDeg, obliquityDeg, latDeg, 1 / 3, norm360(ic + 30));
-  const c3  = iteratePlacidusBelow(ramcDeg, obliquityDeg, latDeg, 2 / 3, norm360(ic + 60));
+  // H11: 1/3 of SDA from MC toward ASC (initial est: mc + 30°)
+  const c11 = iteratePlacidusAbove(ramcDeg, obliquityDeg, latDeg, 1 / 3, norm360(mc + 30));
+  // H12: 2/3 of SDA from MC toward ASC (initial est: mc + 60°)
+  const c12 = iteratePlacidusAbove(ramcDeg, obliquityDeg, latDeg, 2 / 3, norm360(mc + 60));
 
-  // Opposite cusps
-  const c5 = norm360(c11 + 180);
-  const c6 = norm360(c12 + 180);
-  const c8 = norm360(c2  + 180);
-  const c9 = norm360(c3  + 180);
+  // H2: 2/3 of SNA from IC toward ASC (initial est: ic - 60°, going backward)
+  const c2  = iteratePlacidusBelow(ramcDeg, obliquityDeg, latDeg, 2 / 3, norm360(ic - 60));
+  // H3: 1/3 of SNA from IC toward ASC (initial est: ic - 30°, going backward)
+  const c3  = iteratePlacidusBelow(ramcDeg, obliquityDeg, latDeg, 1 / 3, norm360(ic - 30));
 
-  // Index 0 = Cusp 1 (ASC), index 9 = Cusp 10 (MC), etc.
+  // Opposite cusps (180° apart)
+  const c5 = norm360(c11 + 180);  // H5 = opposite H11
+  const c6 = norm360(c12 + 180);  // H6 = opposite H12
+  const c8 = norm360(c2  + 180);  // H8 = opposite H2
+  const c9 = norm360(c3  + 180);  // H9 = opposite H3
+
+  // Return array indexed 0–11 = H1–H12
   return [asc, c2, c3, ic, c5, c6, desc, c8, c9, mc, c11, c12];
 }
