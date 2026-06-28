@@ -14,9 +14,16 @@
  */
 
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { Profile, StoredChart, Conversation, Message, AppSettings } from '@luckyray/shared';
 
+export type AppMode = 'astrologer' | 'user';
+
 interface AppState {
+  // App mode — controls what features are visible
+  appMode: AppMode;
+  setAppMode: (mode: AppMode) => void;
+
   // Current active profile
   activeProfile: Profile | null;
   setActiveProfile: (profile: Profile | null) => void;
@@ -64,7 +71,12 @@ export interface Toast {
   duration?: number;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+  appMode: 'user' as AppMode,
+  setAppMode: (mode) => set({ appMode: mode }),
+
   activeProfile: null,
   setActiveProfile: (profile) => set({ activeProfile: profile }),
 
@@ -113,4 +125,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   removeToast: (id) => set(state => ({ toasts: state.toasts.filter(t => t.id !== id) })),
-}));
+    }),
+    {
+      name: 'luckyray-app',
+      partialize: (state) => ({ appMode: state.appMode }),
+    },
+  ),
+);

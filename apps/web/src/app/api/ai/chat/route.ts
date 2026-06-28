@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildSystemPrompt, buildRulesPrompt, serializeChartContext } from '@luckyray/ai';
+import {
+  buildSystemPrompt, buildRulesPrompt,
+  buildUserModeSystemPrompt, buildAstrologerModeSystemPrompt,
+  serializeChartContext,
+} from '@luckyray/ai';
 import type { AIMessage, ChartContext } from '@luckyray/shared';
 
 const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com/v1';
@@ -24,7 +28,8 @@ export async function POST(req: NextRequest) {
     model?: string;
     stream?: boolean;
     maxTokens?: number;
-    systemPromptOverride?: string; // replaces buildSystemPrompt+buildRulesPrompt entirely
+    systemPromptOverride?: string;
+    systemMode?: 'user' | 'astrologer';  // determines AI persona
   };
 
   try {
@@ -33,17 +38,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride } = body;
+  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride, systemMode = 'user' } = body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
   }
 
-  // Build system content: caller-supplied override takes full precedence
+  // Build system content
   const chartText = chartContext ? serializeChartContext(chartContext) : '';
-  const systemContent = systemPromptOverride
-    ? [systemPromptOverride, chartText].filter(Boolean).join('\n\n')
-    : [buildSystemPrompt(), buildRulesPrompt(), chartText].filter(Boolean).join('\n\n');
+  let basePrompt: string;
+  if (systemPromptOverride) {
+    basePrompt = systemPromptOverride;
+  } else if (systemMode === 'astrologer') {
+    basePrompt = [buildAstrologerModeSystemPrompt(), buildRulesPrompt()].join('\n\n');
+  } else {
+    basePrompt = buildUserModeSystemPrompt();
+  }
+  const systemContent = [basePrompt, chartText].filter(Boolean).join('\n\n');
 
   const apiMessages = [
     { role: 'system', content: systemContent },

@@ -470,11 +470,18 @@ async function downloadAsPDF(
 
   const meta = REPORT_META[reportType];
 
+  // Dark background for the first page
+  doc.setFillColor(5, 3, 14);
+  doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
+
   // ── Page helpers ───────────────────────────────────────────────────────────
 
   const ensureSpace = (needed: number) => {
     if (y + needed > PAGE_H - MARGIN) {
       doc.addPage();
+      // Dark background on new page
+      doc.setFillColor(5, 3, 14);
+      doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
       y = MARGIN;
     }
   };
@@ -604,6 +611,7 @@ async function downloadAsPDF(
   const totalPages = (doc as any).internal.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
+    // Ensure dark background on every page (footer always on top)
     doc.setFillColor(10, 6, 22);
     doc.rect(0, PAGE_H - 10, PAGE_W, 10, 'F');
     doc.setFont('helvetica', 'normal');

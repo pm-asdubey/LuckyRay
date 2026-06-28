@@ -30,8 +30,8 @@ function normalizeAngle(deg: number): number {
  * @param natalAscendantSignIndex  Natal ascendant sign index (0=Aries…11=Pisces)
  * @returns GocharData with current positions and natal house assignments
  */
-export function computeCurrentGochar(natalAscendantSignIndex: number): GocharData {
-  const now = new Date();
+export function computeCurrentGochar(natalAscendantSignIndex: number, date?: Date): GocharData {
+  const now = date ?? new Date();
   const jd = dateToJulianDay(now);
   const ayanamsa = computeLahiriAyanamsa(jd);
   const rawPlanets = computeAllPlanetPositions(now);
@@ -59,6 +59,7 @@ export function computeCurrentGochar(natalAscendantSignIndex: number): GocharDat
   return {
     computedAt: now.toISOString(),
     planets,
+    date: now.toISOString().split('T')[0],
   };
 }
 

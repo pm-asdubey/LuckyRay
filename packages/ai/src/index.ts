@@ -21,7 +21,7 @@
  *   Future: Abstraction layer supports adding other providers (OpenAI, Anthropic, local).
  */
 
-export { buildSystemPrompt, buildRulesPrompt, PROMPT_VERSION } from './system-prompt';
+export { buildSystemPrompt, buildRulesPrompt, buildUserModeSystemPrompt, buildAstrologerModeSystemPrompt, PROMPT_VERSION } from './system-prompt';
 export {
   buildChartContext,
   serializeChartContext,

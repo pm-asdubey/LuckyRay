@@ -15,6 +15,7 @@ import { ChartViewer } from '@/components/chart/chart-viewer';
 import { PlanetCard } from '@/components/chart/planet-card';
 import { DashaTimeline } from '@/components/chart/dasha-timeline';
 import { YogaList } from '@/components/chart/yoga-list';
+import { ShadbalTable } from '@/components/chart/shadbal-table';
 import { Badge } from '@/components/ui/badge';
 import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -23,7 +24,7 @@ import { formatShortDate, downloadJson, formatDegrees } from '@/lib/utils';
 import { exportChartAsJson } from '@luckyray/storage';
 import { cn } from '@/lib/utils';
 
-type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp';
+type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp' | 'shadbal';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'chart',   label: 'Chart' },
@@ -328,6 +329,10 @@ export default function ChartPage() {
 
                 {activeTab === 'kp' && (
                   <KPView kp={chart.kp} />
+                )}
+
+                {activeTab === 'shadbal' && (
+                  <ShadbalTable planets={chart.planets} />
                 )}
               </div>
             </div>

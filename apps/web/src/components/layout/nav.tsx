@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, LayoutDashboard, MessageCircle, Settings, FileText, Users } from 'lucide-react';
+import {
+  Home, LayoutDashboard, MessageCircle, Settings, FileText, Users,
+  CalendarDays, Globe, Layers,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/store/app-store';
+import { useAppStore, type AppMode } from '@/store/app-store';
 import { LuckyRayLogo } from '@/components/brand/logo';
 
 interface NavItem {
@@ -12,35 +15,85 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   exact?: boolean;
+  modes: AppMode[];
 }
 
-// 5 items — Profiles and Dashas are accessed contextually within Chart and Settings
 const navItems: NavItem[] = [
-  { href: '/',        label: 'Home',     icon: <Home size={18} />,           exact: true },
-  { href: '/chart',   label: 'Chart',    icon: <LayoutDashboard size={18} /> },
-  { href: '/reports', label: 'Reports',  icon: <FileText size={18} /> },
-  { href: '/chat',        label: 'Chat',    icon: <MessageCircle size={18} /> },
-  { href: '/guna-milan',  label: 'Milan',   icon: <Users size={18} /> },
-  { href: '/settings',    label: 'Settings',icon: <Settings size={18} /> },
+  { href: '/',            label: 'Home',        icon: <Home size={16} />,            exact: true, modes: ['astrologer', 'user'] },
+  { href: '/chart',       label: 'Chart',       icon: <LayoutDashboard size={16} />,              modes: ['astrologer'] },
+  { href: '/gochar',      label: 'Gochar',      icon: <Globe size={16} />,                        modes: ['astrologer'] },
+  { href: '/dasha',       label: 'Dashas',      icon: <CalendarDays size={16} />,                 modes: ['astrologer'] },
+  { href: '/divisional',  label: 'Divisional',  icon: <Layers size={16} />,                       modes: ['astrologer'] },
+  { href: '/matchmaking', label: 'Matchmaking', icon: <Users size={16} />,                        modes: ['astrologer'] },
+  { href: '/reports',     label: 'Reports',     icon: <FileText size={16} />,                     modes: ['astrologer', 'user'] },
+  { href: '/chat',        label: 'Chat',        icon: <MessageCircle size={16} />,                modes: ['astrologer', 'user'] },
+  { href: '/settings',    label: 'Settings',    icon: <Settings size={16} />,                     modes: ['astrologer', 'user'] },
 ];
+
+const mobileItems: NavItem[] = [
+  { href: '/',        label: 'Home',    icon: <Home size={18} />,         exact: true, modes: ['astrologer', 'user'] },
+  { href: '/chart',   label: 'Chart',   icon: <LayoutDashboard size={18} />,            modes: ['astrologer'] },
+  { href: '/reports', label: 'Reports', icon: <FileText size={18} />,                   modes: ['astrologer', 'user'] },
+  { href: '/chat',    label: 'Chat',    icon: <MessageCircle size={18} />,               modes: ['astrologer', 'user'] },
+  { href: '/settings',label: '',        icon: <Settings size={18} />,                   modes: ['astrologer', 'user'] },
+];
+
+function isItemActive(pathname: string, item: NavItem): boolean {
+  if (item.exact) return pathname === item.href;
+  if (item.href === '/chart') return pathname.startsWith('/chart') || pathname.startsWith('/dasha');
+  return pathname.startsWith(item.href) && item.href !== '/';
+}
+
+function ModeToggle() {
+  const { appMode, setAppMode } = useAppStore();
+  return (
+    <div className="px-3 py-2.5 border-b border-surface-border">
+      <div className="flex rounded-lg bg-surface-elevated p-0.5">
+        <button
+          onClick={() => setAppMode('user')}
+          className={cn(
+            'flex-1 rounded-md px-2 py-1.5 text-2xs font-medium transition-colors',
+            appMode === 'user'
+              ? 'bg-surface text-content shadow-sm'
+              : 'text-content-subtle hover:text-content-muted',
+          )}
+        >
+          Personal
+        </button>
+        <button
+          onClick={() => setAppMode('astrologer')}
+          className={cn(
+            'flex-1 rounded-md px-2 py-1.5 text-2xs font-medium transition-colors',
+            appMode === 'astrologer'
+              ? 'bg-surface text-accent shadow-sm'
+              : 'text-content-subtle hover:text-content-muted',
+          )}
+        >
+          Astrologer
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function Sidebar() {
   const pathname = usePathname();
-  const activeProfile = useAppStore(s => s.activeProfile);
+  const { activeProfile, appMode } = useAppStore();
+  const visibleItems = navItems.filter(item => item.modes.includes(appMode));
 
   return (
     <nav
       className="hidden md:flex flex-col w-56 shrink-0 border-r border-surface-border bg-surface h-full"
       aria-label="Main navigation"
     >
-      {/* Logo */}
       <div className="flex items-center px-4 py-4 border-b border-surface-border">
-        <LuckyRayLogo size={36} showWordmark />
+        <LuckyRayLogo size={34} showWordmark />
       </div>
 
-      {/* Active profile indicator */}
+      <ModeToggle />
+
       {activeProfile && (
-        <div className="px-3 pt-3">
+        <div className="px-3 pt-2">
           <Link
             href={`/chart/${activeProfile.id}`}
             className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-xs text-content-muted hover:text-content hover:bg-surface-elevated transition-colors"
@@ -51,19 +104,13 @@ export function Sidebar() {
               <div className="text-content-subtle text-2xs">Active profile</div>
             </div>
           </Link>
-          <div className="border-t border-surface-border mt-3" />
+          <div className="border-t border-surface-border mt-2" />
         </div>
       )}
 
-      {/* Nav items */}
-      <div className="flex-1 flex flex-col gap-0.5 p-3 pt-2">
-        {navItems.map(item => {
-          // /chart also catches /dasha routes (dasha page is part of the chart experience)
-          const isActive = item.exact
-            ? pathname === item.href
-            : (pathname.startsWith(item.href) && item.href !== '/') ||
-              (item.href === '/chart' && pathname.startsWith('/dasha'));
-
+      <div className="flex-1 flex flex-col gap-0.5 p-3 pt-2 overflow-y-auto">
+        {visibleItems.map(item => {
+          const isActive = isItemActive(pathname, item);
           return (
             <Link
               key={item.href}
@@ -82,12 +129,20 @@ export function Sidebar() {
           );
         })}
       </div>
+
+      <div className="px-4 py-3 border-t border-surface-border">
+        <span className="text-2xs text-content-subtle uppercase tracking-widest">
+          {appMode === 'astrologer' ? 'Astrologer View' : 'Personal View'}
+        </span>
+      </div>
     </nav>
   );
 }
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { appMode } = useAppStore();
+  const visible = mobileItems.filter(item => item.modes.includes(appMode));
 
   return (
     <nav
@@ -95,27 +150,21 @@ export function BottomNav() {
       aria-label="Mobile navigation"
     >
       <div className="flex items-center justify-around px-2 py-2">
-        {navItems.map(item => {
-          const isActive = item.exact
-            ? pathname === item.href
-            : (pathname.startsWith(item.href) && item.href !== '/') ||
-              (item.href === '/chart' && pathname.startsWith('/dasha'));
-
+        {visible.map(item => {
+          const isActive = isItemActive(pathname, item);
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg min-w-[52px]',
+                'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg min-w-[48px]',
                 'text-2xs transition-colors',
-                isActive
-                  ? 'text-accent'
-                  : 'text-content-subtle hover:text-content',
+                isActive ? 'text-accent' : 'text-content-subtle hover:text-content',
               )}
               aria-current={isActive ? 'page' : undefined}
             >
               {item.icon}
-              <span>{item.label}</span>
+              {item.label && <span>{item.label}</span>}
             </Link>
           );
         })}
@@ -137,7 +186,6 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
     lg: 'h-12 w-12 text-sm',
   };
 
-  // Generate a consistent color from the name
   const hue = name.charCodeAt(0) * 40 % 360;
 
   return (
@@ -149,8 +197,7 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
       style={{
         backgroundColor: `hsl(${hue} 40% 20%)`,
         color: `hsl(${hue} 60% 70%)`,
-        borderColor: `hsl(${hue} 40% 25%)`,
-        border: '1px solid',
+        border: `1px solid hsl(${hue} 40% 25%)`,
       }}
       aria-label={name}
     >

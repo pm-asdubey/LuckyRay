@@ -5,6 +5,7 @@ import type { AIMessage, ChartContext } from '@luckyray/shared';
 
 interface UseAIChatOptions {
   chartContext?: ChartContext;
+  systemMode?: 'user' | 'astrologer';
   onToken: (token: string) => void;
   onComplete: (fullText: string) => void;
   onError: (error: string) => void;
@@ -39,6 +40,7 @@ function parseSSEChunk(raw: string): { content: string; finishReason: string | n
 
 export function useAIChat({
   chartContext,
+  systemMode = 'user',
   onToken,
   onComplete,
   onError,
@@ -67,7 +69,7 @@ export function useAIChat({
           const response = await fetch('/api/ai/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages: conversationMessages, chartContext, stream: true }),
+            body: JSON.stringify({ messages: conversationMessages, chartContext, stream: true, systemMode }),
             signal: controller.signal,
           });
 

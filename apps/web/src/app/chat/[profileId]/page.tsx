@@ -99,7 +99,7 @@ export default function ChatPage() {
   // Token batching: accumulate in a ref, flush to React state at most once per animation frame
   const tokenAccumRef = useRef('');
   const rafRef = useRef<number | null>(null);
-  const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming } = useAppStore();
+  const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming, appMode } = useAppStore();
 
   const chartContext = storedChart?.chart
     ? buildChartContext(
@@ -115,7 +115,7 @@ export default function ChatPage() {
     return getDynamicSuggestions(lastAssistant?.content);
   }, [messages]);
 
-  const { send, abort } = useAIChat({
+  const { send, abort } = useAIChat({ systemMode: appMode,
     chartContext,
     onToken: (token) => {
       // Batch token appends into a single RAF-gated state update.

@@ -185,6 +185,7 @@ export interface GocharPlanet {
 
 export interface GocharData {
   computedAt: string;  // ISO 8601
+  date?: string;       // YYYY-MM-DD of computation
   planets: GocharPlanet[];
 }
 

@@ -1,172 +1,118 @@
 'use client';
 
 /**
- * LuckyRay Logo
+ * LuckyRay Logo — Lakeiren (लकीरें)
  *
- * Brand concept: "Lakeiren" (लकीरें) = lines on your palm / fate lines
- * Combined with "Lucky Ray" = a ray of light/fortune from your palm
- *
- * Visual: A stylised open palm with three classical Jyotish lines
- * (life, heart, head) that converge into a rising ray of light from the
- * palm's centre — representing fate written in the hand, illuminated
- * by the stars.
- *
- * The design is intentionally minimal and mysterious — no cartoonish
- * elements, just precise curves and a subtle glow.
+ * Design concept: A stylised celestial eye — the "third eye" of Jyotish,
+ * surrounded by an orbital ring suggesting planetary motion. The pupil
+ * contains a subtle star/ray burst, evoking starlight and cosmic vision.
+ * Minimal, geometric, mysterious. No hand/palm metaphor.
  */
 
 import { cn } from '@/lib/utils';
 
 interface LogoProps {
-  size?: number;         // width = height (square SVG)
+  size?: number;
   variant?: 'default' | 'light' | 'mono';
   className?: string;
   showWordmark?: boolean;
 }
 
 export function LuckyRayLogo({ size = 40, variant = 'default', className, showWordmark = false }: LogoProps) {
-  const colors = {
+  const c = {
     default: {
-      ray:    '#a78bfa',   // violet-400
-      lines:  '#7c3aed',   // violet-600
-      glow:   'rgba(124,58,237,0.18)',
-      ring:   'rgba(139,92,246,0.15)',
-      center: '#c4b5fd',   // violet-300
-      bg:     'transparent',
+      outer:  'rgba(139,92,246,0.12)',
+      ring:   '#4c1d95',
+      iris:   '#1e0a3c',
+      pupil:  '#7c3aed',
+      ray:    '#a78bfa',
+      glow:   'rgba(167,139,250,0.25)',
+      tick:   'rgba(139,92,246,0.4)',
+      text:   '#ede9fe',
+      sub:    '#7c3aed',
     },
     light: {
-      ray:    '#6d28d9',   // violet-700
-      lines:  '#5b21b6',   // violet-800
-      glow:   'rgba(109,40,217,0.12)',
-      ring:   'rgba(109,40,217,0.1)',
-      center: '#7c3aed',
-      bg:     'transparent',
+      outer:  'rgba(109,40,217,0.08)',
+      ring:   '#7c3aed',
+      iris:   '#f5f3ff',
+      pupil:  '#6d28d9',
+      ray:    '#5b21b6',
+      glow:   'rgba(109,40,217,0.15)',
+      tick:   'rgba(109,40,217,0.3)',
+      text:   '#1e1b4b',
+      sub:    '#7c3aed',
     },
     mono: {
+      outer:  'transparent',
+      ring:   'currentColor',
+      iris:   'transparent',
+      pupil:  'currentColor',
       ray:    'currentColor',
-      lines:  'currentColor',
       glow:   'transparent',
-      ring:   'transparent',
-      center: 'currentColor',
-      bg:     'transparent',
+      tick:   'currentColor',
+      text:   'currentColor',
+      sub:    'currentColor',
     },
-  };
-
-  const c = colors[variant];
+  }[variant];
 
   return (
     <div className={cn('inline-flex items-center gap-2.5', className)}>
-      {/* Icon mark */}
       <svg
         width={size}
         height={size}
         viewBox="0 0 64 64"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        aria-label="LuckyRay — Lakeiren"
+        aria-label="LuckyRay"
         role="img"
       >
-        {/* Outer ring — subtle halo */}
-        <circle cx="32" cy="32" r="30" stroke={c.ring} strokeWidth="1" />
+        {/* Outer subtle halo */}
+        <circle cx="32" cy="32" r="30" fill={c.outer} />
 
-        {/* Mid ring */}
-        <circle cx="32" cy="32" r="22" stroke={c.glow} strokeWidth="6" />
+        {/* Orbital ring — 12 tick marks like a clock face / zodiac wheel */}
+        <circle cx="32" cy="32" r="28" stroke={c.ring} strokeWidth="0.75" strokeDasharray="2 12.6" strokeDashoffset="1" />
 
-        {/*
-          Palm lines — three arcs representing the three classical
-          palmistry lines: life (left arc), heart (upper curve), head (middle)
-          All converge toward the centre of the palm at roughly (30, 35)
-        */}
+        {/* Secondary inner ring */}
+        <circle cx="32" cy="32" r="22" stroke={c.ring} strokeWidth="0.5" opacity="0.5" />
 
-        {/* Life line — curves from upper mount to base, left of centre */}
-        <path
-          d="M 24 16 C 20 24, 19 32, 22 46"
-          stroke={c.lines}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          opacity="0.85"
-        />
+        {/* Iris of the eye / celestial circle */}
+        <circle cx="32" cy="32" r="16" fill={c.iris} stroke={c.ring} strokeWidth="1.5" />
 
-        {/* Heart line — arcs across the upper palm */}
-        <path
-          d="M 17 28 C 24 24, 36 24, 46 30"
-          stroke={c.lines}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          opacity="0.85"
-        />
+        {/* Glow behind pupil */}
+        <circle cx="32" cy="32" r="10" fill={c.glow} />
 
-        {/* Head line — nearly horizontal, slightly curved */}
-        <path
-          d="M 18 34 C 26 32, 36 32, 46 36"
-          stroke={c.lines}
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          opacity="0.7"
-        />
+        {/* The Ray — 8-pointed star burst, subtle */}
+        {[0, 45, 90, 135].map((angle, i) => {
+          const r1 = 4, r2 = 9;
+          const a = (angle * Math.PI) / 180;
+          const x1 = 32 + r1 * Math.cos(a), y1 = 32 + r1 * Math.sin(a);
+          const x2 = 32 + r2 * Math.cos(a), y2 = 32 + r2 * Math.sin(a);
+          const x3 = 32 - r2 * Math.cos(a), y3 = 32 - r2 * Math.sin(a);
+          const x4 = 32 - r1 * Math.cos(a), y4 = 32 - r1 * Math.sin(a);
+          return (
+            <g key={i}>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={c.ray} strokeWidth="1" opacity={i < 2 ? '0.9' : '0.5'} />
+              <line x1={x4} y1={y4} x2={x3} y2={y3} stroke={c.ray} strokeWidth="1" opacity={i < 2 ? '0.9' : '0.5'} />
+            </g>
+          );
+        })}
 
-        {/*
-          Fate / Sun line — rises from the base of the palm upward and
-          then extends BEYOND the palm boundary as a "ray of light",
-          representing the celestial ray / Lucky Ray concept.
-          This is the core of the logo — fate written in the palm,
-          projecting outward as a divine ray.
-        */}
-
-        {/* Fate line lower half — inside the palm, rising */}
-        <path
-          d="M 32 46 C 32 40, 31 36, 30 30"
-          stroke={c.ray}
-          strokeWidth="2"
-          strokeLinecap="round"
-          opacity="0.9"
-        />
-
-        {/* The Ray — fate line continues beyond the palm, becoming a beam */}
-        <path
-          d="M 30 30 C 30 24, 31 18, 32 8"
-          stroke={c.ray}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          opacity="1"
-        />
-
-        {/* Ray tip glow — tiny star at the apex of the ray */}
-        <circle cx="32" cy="8" r="2" fill={c.ray} opacity="0.9" />
-        <circle cx="32" cy="8" r="4" fill={c.glow} />
-
-        {/* Small cross-ray — the "star" suggestion */}
-        <line x1="30" y1="8" x2="34" y2="8" stroke={c.ray} strokeWidth="1" opacity="0.5" />
-        <line x1="32" y1="6" x2="32" y2="10" stroke={c.ray} strokeWidth="1" opacity="0.5" />
-
-        {/* Centre node — where all lines converge */}
-        <circle cx="30" cy="30" r="2" fill={c.center} opacity="0.8" />
-
-        {/* Soft inner glow at convergence point */}
-        <circle cx="30" cy="30" r="5" fill={c.glow} />
+        {/* Central pupil */}
+        <circle cx="32" cy="32" r="4" fill={c.pupil} />
+        <circle cx="32" cy="32" r="2" fill={c.ray} />
       </svg>
 
-      {/* Wordmark (optional) */}
       {showWordmark && (
         <div className="flex flex-col leading-none">
           <span
             className="font-semibold tracking-wide"
-            style={{
-              fontSize: size * 0.38,
-              color: variant === 'light' ? '#1e1b4b' : '#ede9fe',
-              letterSpacing: '0.04em',
-            }}
+            style={{ fontSize: size * 0.35, color: c.text, letterSpacing: '0.05em' }}
           >
             LuckyRay
           </span>
           <span
             className="tracking-widest"
-            style={{
-              fontSize: size * 0.19,
-              color: variant === 'light' ? '#7c3aed' : '#7c3aed',
-              letterSpacing: '0.2em',
-              marginTop: 1,
-            }}
+            style={{ fontSize: size * 0.18, color: c.sub, letterSpacing: '0.22em', marginTop: 2 }}
           >
             लकीरें
           </span>
@@ -176,25 +122,23 @@ export function LuckyRayLogo({ size = 40, variant = 'default', className, showWo
   );
 }
 
-/**
- * Logo as a pure string SVG (for embedding in PDF, emails, etc.).
- * Returns an SVG data URL.
- */
 export function getLogoDataUrl(size = 128): string {
   const svg = `<svg width="${size}" height="${size}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="32" cy="32" r="30" stroke="rgba(139,92,246,0.15)" stroke-width="1"/>
-    <circle cx="32" cy="32" r="22" stroke="rgba(124,58,237,0.18)" stroke-width="6"/>
-    <path d="M 24 16 C 20 24, 19 32, 22 46" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.85"/>
-    <path d="M 17 28 C 24 24, 36 24, 46 30" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.85"/>
-    <path d="M 18 34 C 26 32, 36 32, 46 36" stroke="#7c3aed" stroke-width="1.8" stroke-linecap="round" opacity="0.7"/>
-    <path d="M 32 46 C 32 40, 31 36, 30 30" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
-    <path d="M 30 30 C 30 24, 31 18, 32 8" stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="32" cy="8" r="2" fill="#a78bfa" opacity="0.9"/>
-    <circle cx="32" cy="8" r="4" fill="rgba(124,58,237,0.18)"/>
-    <line x1="30" y1="8" x2="34" y2="8" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
-    <line x1="32" y1="6" x2="32" y2="10" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
-    <circle cx="30" cy="30" r="2" fill="#c4b5fd" opacity="0.8"/>
-    <circle cx="30" cy="30" r="5" fill="rgba(124,58,237,0.18)"/>
+    <circle cx="32" cy="32" r="30" fill="rgba(139,92,246,0.12)"/>
+    <circle cx="32" cy="32" r="28" stroke="#4c1d95" stroke-width="0.75" stroke-dasharray="2 12.6" stroke-dashoffset="1"/>
+    <circle cx="32" cy="32" r="22" stroke="#4c1d95" stroke-width="0.5" opacity="0.5"/>
+    <circle cx="32" cy="32" r="16" fill="#1e0a3c" stroke="#4c1d95" stroke-width="1.5"/>
+    <circle cx="32" cy="32" r="10" fill="rgba(167,139,250,0.25)"/>
+    <line x1="32" y1="23" x2="32" y2="28" stroke="#a78bfa" stroke-width="1" opacity="0.9"/>
+    <line x1="32" y1="36" x2="32" y2="41" stroke="#a78bfa" stroke-width="1" opacity="0.9"/>
+    <line x1="23" y1="32" x2="28" y2="32" stroke="#a78bfa" stroke-width="1" opacity="0.9"/>
+    <line x1="36" y1="32" x2="41" y2="32" stroke="#a78bfa" stroke-width="1" opacity="0.9"/>
+    <line x1="35.36" y1="28.64" x2="38.54" y2="25.46" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="28.64" y1="35.36" x2="25.46" y2="38.54" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="28.64" y1="28.64" x2="25.46" y2="25.46" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <line x1="35.36" y1="35.36" x2="38.54" y2="38.54" stroke="#a78bfa" stroke-width="1" opacity="0.5"/>
+    <circle cx="32" cy="32" r="4" fill="#7c3aed"/>
+    <circle cx="32" cy="32" r="2" fill="#a78bfa"/>
   </svg>`;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
 }
