@@ -4,6 +4,8 @@ import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, LayoutDashboard, Plus } from 'lucide-react';
+
+const INCOMPLETE_MARKER = '_(response stopped)_';
 import {
   getProfile, getLatestChart,
   createConversation, getConversationsForProfile,
@@ -92,6 +94,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [incompleteMessageId, setIncompleteMessageId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +102,13 @@ export default function ChatPage() {
   // Token batching: accumulate in a ref, flush to React state at most once per animation frame
   const tokenAccumRef = useRef('');
   const rafRef = useRef<number | null>(null);
+  // Mirror of messages state for use in async callbacks without stale closures
+  const messagesRef = useRef<Message[]>([]);
   const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming, appMode } = useAppStore();
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const chartContext = storedChart?.chart
     ? buildChartContext(
@@ -115,7 +124,8 @@ export default function ChatPage() {
     return getDynamicSuggestions(lastAssistant?.content);
   }, [messages]);
 
-  const { send, abort } = useAIChat({ systemMode: appMode,
+  const { send, continue: continueResponse, abort } = useAIChat({
+    systemMode: appMode,
     chartContext,
     onToken: (token) => {
       // Batch token appends into a single RAF-gated state update.
@@ -143,23 +153,58 @@ export default function ChatPage() {
       if (!conversation) return;
 
       const now = new Date().toISOString();
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        conversationId: conversation.id,
-        role: 'assistant',
-        content: fullText,
-        createdAt: now,
-      };
-      await addMessage(assistantMessage);
-      setMessages(prev => [...prev, assistantMessage]);
+
+      // If we were continuing a halted response, replace the incomplete message.
+      if (incompleteMessageId) {
+        let updatedMessage: Message | undefined;
+        setMessages(prev => {
+          const idx = prev.findIndex(m => m.id === incompleteMessageId);
+          if (idx === -1) return prev;
+          updatedMessage = { ...prev[idx]!, content: fullText };
+          const updated = [...prev];
+          updated[idx] = updatedMessage;
+          return updated;
+        });
+        if (updatedMessage) await addMessage(updatedMessage);
+        setIncompleteMessageId(null);
+      } else {
+        const assistantMessage: Message = {
+          id: crypto.randomUUID(),
+          conversationId: conversation.id,
+          role: 'assistant',
+          content: fullText,
+          createdAt: now,
+        };
+        await addMessage(assistantMessage);
+        setMessages(prev => [...prev, assistantMessage]);
+      }
       await updateConversation(conversation.id, { updatedAt: now });
     },
     onError: (errMsg) => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      const captured = tokenAccumRef.current;
       tokenAccumRef.current = '';
       setIsStreaming(false);
       setStoreStreaming(false);
       setStreamingText('');
+
+      // Preserve whatever was generated before the error so the user can continue.
+      const partial = streamingText || captured;
+      if (partial && conversation) {
+        const now = new Date().toISOString();
+        const incompleteMsg: Message = {
+          id: crypto.randomUUID(),
+          conversationId: conversation.id,
+          role: 'assistant',
+          content: partial.trim() + ' ' + INCOMPLETE_MARKER,
+          createdAt: now,
+        };
+        addMessage(incompleteMsg);
+        setMessages(prev => [...prev, incompleteMsg]);
+        setIncompleteMessageId(incompleteMsg.id);
+        updateConversation(conversation.id, { updatedAt: now });
+      }
+
       addToast({ type: 'error', message: errMsg });
     },
   });
@@ -249,6 +294,7 @@ export default function ChatPage() {
     setStreamingText('');
     setIsStreaming(true);
     setStoreStreaming(true);
+    setIncompleteMessageId(null);
 
     const apiMessages = updatedMessages
       .filter(m => m.role !== 'system')
@@ -267,7 +313,7 @@ export default function ChatPage() {
     setStoreStreaming(false);
     const abortedText = streamingText || captured;
     if (abortedText) {
-      const partial = abortedText + ' _(response stopped)_';
+      const partial = abortedText + ' ' + INCOMPLETE_MARKER;
       if (conversation) {
         const msg: Message = {
           id: crypto.randomUUID(),
@@ -278,12 +324,38 @@ export default function ChatPage() {
         };
         addMessage(msg);
         setMessages(prev => [...prev, msg]);
+        setIncompleteMessageId(msg.id);
       }
     }
     setStreamingText('');
   };
 
   const handleNewChat = () => load(true);
+
+  const handleContinue = async (messageId: string) => {
+    if (!conversation || isStreaming) return;
+
+    const messageIndex = messages.findIndex(m => m.id === messageId);
+    if (messageIndex === -1) return;
+
+    const incompleteMsg = messages[messageIndex]!;
+    const cleaned = incompleteMsg.content.replace(INCOMPLETE_MARKER, '').trim();
+
+    // Messages sent to the AI: everything before the incomplete assistant message.
+    const historyForAI = messages
+      .slice(0, messageIndex)
+      .filter(m => m.role !== 'system')
+      .slice(-20)
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+    tokenAccumRef.current = cleaned;
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    setStreamingText(cleaned);
+    setIsStreaming(true);
+    setStoreStreaming(true);
+
+    continueResponse(historyForAI, cleaned);
+  };
 
   if (loading) {
     return (
@@ -382,7 +454,12 @@ export default function ChatPage() {
             )}
 
             {messages.map(msg => (
-              <MessageBubble key={msg.id} message={msg} profileName={profile.name} />
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                profileName={profile.name}
+                onContinue={msg.id === incompleteMessageId ? () => handleContinue(msg.id) : undefined}
+              />
             ))}
 
             {isStreaming && <StreamingBubble text={streamingText} />}

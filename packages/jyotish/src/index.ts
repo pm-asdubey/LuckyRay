@@ -43,6 +43,8 @@ export { serializeChartInterpretation } from './interpreter';
 export { serializeKPInterpretation } from './kp';
 export { computeGunaMilan, getMoonDataFromLongitude } from './guna-milan';
 export type { GunaMilanResult, GunaMilanInput, KootaScore } from './guna-milan';
+export { computeManglikScore, computeManglikScoreFromPlanets } from './manglik-score';
+export type { ManglikScoreInput, ManglikScoreResult, ManglikPlanetScore, ManglikScoreDetail } from './manglik-score';
 
 export interface ChartGenerationInput {
   profile: Pick<Profile, 'id' | 'name' | 'gender'>;

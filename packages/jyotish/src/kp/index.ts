@@ -152,6 +152,9 @@ export function computeKP(input: KPInput): KPData {
   const ascLords = getKPLordship(ascSidereal);
   const moonLords = getKPLordship(moonLon);
 
+  const ascSignLord = signLord(Math.floor(ascSidereal / 30));
+  const moonSignLord = signLord(Math.floor(moonLon / 30));
+
   // Day of week from birth date
   const parts = birthDate.split('-').map(Number);
   const birthDayDate = new Date(Date.UTC(parts[0]!, parts[1]! - 1, parts[2]!));
@@ -166,8 +169,10 @@ export function computeKP(input: KPInput): KPData {
     rulingPlanets: {
       ascStarLord: ascLords.nakshatraLord,
       ascSubLord: ascLords.subLord,
+      ascSignLord,
       moonStarLord: moonLords.nakshatraLord,
       moonSubLord: moonLords.subLord,
+      moonSignLord,
       dayLord,
     },
   };

@@ -2,6 +2,7 @@
 
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { RefreshCw } from 'lucide-react';
 import type { Message } from '@luckyray/shared';
 import { cn } from '@/lib/utils';
 import { Avatar } from '@/components/layout/nav';
@@ -9,10 +10,17 @@ import { Avatar } from '@/components/layout/nav';
 interface MessageBubbleProps {
   message: Message;
   profileName?: string;
+  onContinue?: () => void;
 }
 
-export function MessageBubble({ message, profileName }: MessageBubbleProps) {
+const INCOMPLETE_MARKER = '_(response stopped)_';
+
+export function MessageBubble({ message, profileName, onContinue }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const isIncomplete = !isUser && message.content.includes(INCOMPLETE_MARKER);
+  const displayContent = isIncomplete
+    ? message.content.replace(INCOMPLETE_MARKER, '').trim()
+    : message.content;
 
   return (
     <div className={cn('flex gap-3', isUser ? 'flex-row-reverse' : 'flex-row')}>
@@ -24,7 +32,7 @@ export function MessageBubble({ message, profileName }: MessageBubbleProps) {
         )}
       </div>
 
-      <div className={cn('max-w-[75%] space-y-1', isUser ? 'items-end' : 'items-start')}>
+      <div className={cn('max-w-[75%] space-y-1.5', isUser ? 'items-end' : 'items-start')}>
         <div
           className={cn(
             'rounded-2xl px-4 py-3 text-sm',
@@ -34,13 +42,27 @@ export function MessageBubble({ message, profileName }: MessageBubbleProps) {
           )}
         >
           {isUser ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
+            <p className="whitespace-pre-wrap">{displayContent}</p>
           ) : (
             <div className="prose-chat">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
             </div>
           )}
         </div>
+
+        {isIncomplete && onContinue && (
+          <button
+            onClick={onContinue}
+            className={cn(
+              'flex items-center gap-1.5 text-2xs font-medium',
+              'text-accent hover:text-accent-hover transition-colors',
+              'px-1 py-0.5 rounded',
+            )}
+          >
+            <RefreshCw size={10} />
+            Continue response
+          </button>
+        )}
       </div>
     </div>
   );

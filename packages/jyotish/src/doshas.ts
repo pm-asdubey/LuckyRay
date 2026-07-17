@@ -15,6 +15,7 @@
 
 import type { DoshaData, PlanetPosition, HouseData } from '@luckyray/shared';
 import { SIGN_LORDS } from '@luckyray/shared';
+import { computeManglikScoreFromPlanets } from './manglik-score';
 
 interface DoshaDetectionInput {
   planets: PlanetPosition[];
@@ -56,7 +57,14 @@ function detectManglikDosha(
   ascendantSignIndex: number,
 ): DoshaData {
   const mars = planets.find(p => p.id === 'Mars');
-  if (!mars) {
+  const moon = planets.find(p => p.id === 'Moon');
+  const venus = planets.find(p => p.id === 'Venus');
+  const saturn = planets.find(p => p.id === 'Saturn');
+  const rahu = planets.find(p => p.id === 'Rahu');
+  const ketu = planets.find(p => p.id === 'Ketu');
+  const sun = planets.find(p => p.id === 'Sun');
+
+  if (!mars || !moon || !venus || !saturn || !rahu || !ketu || !sun) {
     return notDetected('manglik', 'Manglik Dosha');
   }
 
@@ -78,6 +86,18 @@ function detectManglikDosha(
 
   const isManglik = inManglikHouse && cancellations.length === 0;
 
+  // Weighted Manglik score (deterministic, full computation trace)
+  const manglikScore = computeManglikScoreFromPlanets(
+    ascendantSignIndex,
+    moon,
+    venus,
+    mars,
+    saturn,
+    rahu,
+    ketu,
+    sun,
+  );
+
   return {
     id: 'manglik',
     name: 'Manglik Dosha',
@@ -87,6 +107,7 @@ function detectManglikDosha(
     cancellations,
     reference: 'BPHS; generally accepted Parashari interpretation; Counting from Lagna only',
     school: 'Parashari (conservative list: houses 1,2,4,7,8,12)',
+    metadata: { manglikScore },
   };
 }
 

@@ -102,8 +102,8 @@ export function serializeKPInterpretation(chart: CanonicalChart): string {
   lines.push('');
   lines.push('── RULING PLANETS (at birth) ────────────────────────────────────');
   const rp = kp.rulingPlanets;
-  lines.push(`Asc Star Lord: ${rp.ascStarLord}  |  Asc Sub Lord: ${rp.ascSubLord}`);
-  lines.push(`Moon Star Lord: ${rp.moonStarLord}  |  Moon Sub Lord: ${rp.moonSubLord}`);
+  lines.push(`Asc Star Lord: ${rp.ascStarLord}  |  Asc Sub Lord: ${rp.ascSubLord}  |  Asc Sign Lord: ${rp.ascSignLord}`);
+  lines.push(`Moon Star Lord: ${rp.moonStarLord}  |  Moon Sub Lord: ${rp.moonSubLord}  |  Moon Sign Lord: ${rp.moonSignLord}`);
   lines.push(`Day Lord: ${rp.dayLord}`);
 
   // ── Event Promise & Periods ──────────────────────────────────────────────

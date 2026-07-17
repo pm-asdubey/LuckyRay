@@ -147,6 +147,8 @@ export interface DoshaData {
   cancellations: string[];
   reference: string;
   school: string;
+  /** Optional structured data for dosha-specific scoring engines. */
+  metadata?: Record<string, unknown>;
 }
 
 // ─── Dasha ───────────────────────────────────────────────────────────────────
@@ -274,8 +276,10 @@ export interface KPData {
   rulingPlanets: {
     ascStarLord: PlanetId;
     ascSubLord: PlanetId;
+    ascSignLord: PlanetId;
     moonStarLord: PlanetId;
     moonSubLord: PlanetId;
+    moonSignLord: PlanetId;
     dayLord: PlanetId;
   };
 }

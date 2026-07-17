@@ -15,8 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-
-const SIGNS = ['Ari','Tau','Gem','Can','Leo','Vir','Lib','Sco','Sag','Cap','Aqu','Pis'];
+import { getNorthIndianHouseGeometry, SIGN_ABBREVIATIONS } from '@/lib/chart-geometry';
 
 export default function DivisionalPage() {
   const params = useParams<{ profileId: string }>();
@@ -205,37 +204,24 @@ function MiniDivisionalChart({ div }: { div: DivisionalChart }) {
 
   const ascSignIndex = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'].indexOf(div.ascendant);
 
-  const W = 280, H = 280, cx = W/2, cy = H/2;
+  const W = 280;
+  const cx = W / 2;
+  const cy = W / 2;
 
-  // Same geometry as ChartViewer but smaller
-  const getSign = (housePos: number) => SIGNS[(ascSignIndex + housePos - 1) % 12] ?? '';
-
-  const HOUSES = [
-    { poly: `${cx},0 ${W},${cy} ${cx},${cy} 0,${cy}`,  hcx: cx,    hcy: 36 },
-    { poly: `0,0 ${cx},0 0,${cy}`,                       hcx: 46,    hcy: 46  },
-    { poly: `0,0 0,${cy} ${cx},${cy} 0,${H}`,           hcx: 36,    hcy: cy  },
-    { poly: `0,${cy} ${cx},${H} 0,${H}`,                 hcx: 46,    hcy: H-46},
-    { poly: `0,${cy} ${cx},${cy} ${W},${cy} ${cx},${H}`,hcx: cx,    hcy: H-36},
-    { poly: `${cx},${H} ${W},${cy} ${W},${H}`,           hcx: W-46,  hcy: H-46},
-    { poly: `${cx},0 ${W},0 ${W},${H} ${cx},${cy} ${W},${cy}`, hcx: W-36, hcy: cy},
-    { poly: `${cx},0 ${W},0 ${W},${cy}`,                 hcx: W-46,  hcy: 46  },
-    { poly: `${cx},0 ${W},${cy} ${cx},${cy}`,            hcx: cx+44, hcy: cy-44},
-    { poly: `${W},${cy} ${cx},${H} ${cx},${cy}`,         hcx: cx+44, hcy: cy+44},
-    { poly: `${cx},${H} 0,${cy} ${cx},${cy}`,            hcx: cx-44, hcy: cy+44},
-    { poly: `0,${cy} ${cx},0 ${cx},${cy}`,               hcx: cx-44, hcy: cy-44},
-  ];
+  // Shared North Indian geometry, scaled to the divisional card size.
+  const getSign = (housePos: number) => SIGN_ABBREVIATIONS[(ascSignIndex + housePos - 1) % 12] ?? '';
+  const houses = getNorthIndianHouseGeometry(W);
 
   return (
     <div className="flex justify-center">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-[280px]" aria-label={`${div.name} chart`}>
-        <rect x="0" y="0" width={W} height={H} fill="hsl(258 25% 7%)" rx="4" />
-        {HOUSES.map(({ poly, hcx, hcy }, idx) => {
-          const h = idx + 1;
+      <svg viewBox={`0 0 ${W} ${W}`} className="w-full max-w-[280px]" aria-label={`${div.name} chart`}>
+        <rect x="0" y="0" width={W} height={W} fill="hsl(258 25% 7%)" rx="4" />
+        {houses.map(({ house: h, points, cx: hcx, cy: hcy }) => {
           const planets = housePlanets.get(h) ?? [];
           const sign = getSign(h);
           return (
             <g key={h}>
-              <polygon points={poly} fill="transparent" stroke="hsl(258 30% 18%)" strokeWidth="1" />
+              <polygon points={points} fill="transparent" stroke="hsl(258 30% 18%)" strokeWidth="1" />
               <text x={hcx} y={hcy - 6} textAnchor="middle" fontSize="6.5" fill="hsl(258 20% 40%)" fontFamily="system-ui">{h}</text>
               <text x={hcx} y={hcy + 2} textAnchor="middle" fontSize="7" fill="hsl(258 20% 45%)" fontFamily="system-ui" fontStyle="italic">{sign}</text>
               {planets.map((p, i) => (

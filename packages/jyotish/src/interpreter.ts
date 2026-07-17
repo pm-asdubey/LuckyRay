@@ -10,6 +10,7 @@
  */
 
 import type { CanonicalChart, PlanetPosition, PlanetId, PlanetDignity } from '@luckyray/shared';
+import type { ManglikScoreResult, ManglikScoreDetail } from './manglik-score';
 
 // ─── House metadata ───────────────────────────────────────────────────────────
 
@@ -357,6 +358,9 @@ export function serializeChartInterpretation(chart: CanonicalChart): string {
     lines.push('── ACTIVE DOSHAS ────────────────────────────────────────────');
     for (const dosha of activeDoshas) {
       lines.push(`${dosha.name}${dosha.severity ? ` — ${dosha.severity} severity` : ''}`);
+      if (dosha.metadata?.manglikScore) {
+        serializeManglikScore(lines, dosha.metadata.manglikScore as ReturnType<typeof import('./manglik-score').computeManglikScore>);
+      }
     }
     lines.push('');
   }
@@ -403,3 +407,22 @@ export function serializeChartInterpretation(chart: CanonicalChart): string {
 
   return lines.join('\n');
 }
+
+function serializeManglikScore(lines: string[], score: ManglikScoreResult): void {
+  lines.push('  Weighted Manglik Score (deterministic):');
+  lines.push(`  Grand Total: ${score.total.toFixed(3)}`);
+  lines.push('');
+  lines.push('  Per-planet breakdown:');
+
+  for (const planet of score.planets) {
+    lines.push(`  • ${planet.planet}: subtotal ${planet.subtotal.toFixed(3)}`);
+    for (const d of planet.details) {
+      const group = d.houseGroup ?? '—';
+      lines.push(
+        `      ${d.reference}: sign ${d.occupiedSign}, house ${d.house}, group [${group}], ` +
+        `dignity ${d.dignity}, raw ${d.rawScore}, weight ${d.weight}, weighted ${d.weightedScore.toFixed(3)}`,
+      );
+    }
+  }
+}
+

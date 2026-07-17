@@ -23,6 +23,8 @@ coverage/
 # Debug
 *.log
 npm-debug.log*
+scripts/bundle-out/
+scripts/validation-results.md
 
 # IDE / OS
 .DS_Store
