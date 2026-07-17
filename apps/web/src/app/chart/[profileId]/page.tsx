@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, RefreshCw, MessageCircle, Download, Edit2, CalendarDays, FileText } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MessageCircle, Download, Edit2, CalendarDays, FileText, Flame } from 'lucide-react';
 import { getProfile, getLatestChart, saveChart } from '@luckyray/storage';
 import type { Profile, StoredChart } from '@luckyray/shared';
 import { generateChart } from '@luckyray/jyotish';
@@ -16,6 +16,7 @@ import { PlanetCard } from '@/components/chart/planet-card';
 import { DashaTimeline } from '@/components/chart/dasha-timeline';
 import { YogaList } from '@/components/chart/yoga-list';
 import { ShadbalTable } from '@/components/chart/shadbal-table';
+import { ManglikView } from '@/components/chart/manglik-view';
 import { Badge } from '@/components/ui/badge';
 import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -24,7 +25,7 @@ import { formatShortDate, downloadJson, formatDegrees } from '@/lib/utils';
 import { exportChartAsJson } from '@luckyray/storage';
 import { cn } from '@/lib/utils';
 
-type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp' | 'shadbal';
+type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp' | 'shadbal' | 'manglik';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'chart',   label: 'Chart' },
@@ -32,6 +33,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'dashas',  label: 'Dashas' },
   { id: 'yogas',   label: 'Yogas' },
   { id: 'kp',      label: 'KP' },
+  { id: 'manglik', label: 'Manglik' },
 ];
 
 export default function ChartPage() {
@@ -333,6 +335,10 @@ export default function ChartPage() {
 
                 {activeTab === 'shadbal' && (
                   <ShadbalTable planets={chart.planets} />
+                )}
+
+                {activeTab === 'manglik' && (
+                  <ManglikView chart={chart} />
                 )}
               </div>
             </div>
