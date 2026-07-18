@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface BirthDetailsFormProps {
   defaultValues?: Partial<{
@@ -23,13 +24,6 @@ interface BirthDetailsFormProps {
   }) => Promise<void>;
   submitLabel?: string;
 }
-
-const GENDER_OPTIONS = [
-  { value: '', label: 'Prefer not to say' },
-  { value: 'Male', label: 'Male' },
-  { value: 'Female', label: 'Female' },
-  { value: 'Other', label: 'Other' },
-];
 
 // Popular timezone options
 const TIMEZONE_OPTIONS = [
@@ -51,9 +45,6 @@ const TIMEZONE_OPTIONS = [
 ];
 
 function getTimezoneOffsetMinutes(timezone: string, date: string, time: string): number {
-  // Use Intl.DateTimeFormat with longOffset to reliably get the UTC offset for a specific
-  // timezone at a specific datetime, properly accounting for DST transitions.
-  // We pass the birth datetime as UTC (suffix 'Z') and read back what the offset would be.
   try {
     const dt = new Date(`${date}T${time}:00Z`);
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -80,7 +71,8 @@ interface FormErrors {
   timezone?: string;
 }
 
-export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save profile' }: BirthDetailsFormProps) {
+export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel }: BirthDetailsFormProps) {
+  const t = useTranslation();
   const [name, setName] = useState(defaultValues?.name ?? '');
   const [gender, setGender] = useState<string>(defaultValues?.gender ?? '');
   const [date, setDate] = useState(defaultValues?.birthDetails?.date ?? '');
@@ -94,24 +86,31 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
   const [submitting, setSubmitting] = useState(false);
   const [searching, setSearching] = useState(false);
 
+  const GENDER_OPTIONS = [
+    { value: '', label: t.form.preferNotToSay },
+    { value: 'Male', label: t.form.male },
+    { value: 'Female', label: t.form.female },
+    { value: 'Other', label: t.form.other },
+  ];
+
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
-    if (!name.trim()) newErrors.name = 'Name is required';
-    if (!date) newErrors.date = 'Date of birth is required';
-    else if (new Date(date) > new Date()) newErrors.date = 'Date cannot be in the future';
-    if (!time) newErrors.time = 'Time of birth is required';
-    if (!place.trim()) newErrors.place = 'Birth place is required';
+    if (!name.trim()) newErrors.name = t.form.nameRequired;
+    if (!date) newErrors.date = t.form.dateRequired;
+    else if (new Date(date) > new Date()) newErrors.date = t.form.dateNoFuture;
+    if (!time) newErrors.time = t.form.timeRequired;
+    if (!place.trim()) newErrors.place = t.form.placeRequired;
 
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
     if (!latitude || isNaN(lat) || lat < -90 || lat > 90) {
-      newErrors.latitude = 'Valid latitude required (-90 to 90)';
+      newErrors.latitude = t.form.latitudeRequired;
     }
     if (!longitude || isNaN(lon) || lon < -180 || lon > 180) {
-      newErrors.longitude = 'Valid longitude required (-180 to 180)';
+      newErrors.longitude = t.form.longitudeRequired;
     }
-    if (!timezone) newErrors.timezone = 'Timezone is required';
+    if (!timezone) newErrors.timezone = t.form.timezoneRequired;
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -119,12 +118,11 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
 
   const handlePlaceSearch = useCallback(async () => {
     if (!place.trim()) {
-      setErrors(e => ({ ...e, place: 'Enter a place name to search' }));
+      setErrors(e => ({ ...e, place: t.form.placeEnterToSearch }));
       return;
     }
     setSearching(true);
     try {
-      // Use the Nominatim geocoding API (OpenStreetMap, free, no key required)
       const query = encodeURIComponent(place.trim());
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?q=${query}&format=json&limit=1`,
@@ -137,7 +135,7 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
       }>;
 
       if (results.length === 0) {
-        setErrors(e => ({ ...e, place: 'Location not found. Try a more specific name.' }));
+        setErrors(e => ({ ...e, place: t.form.placeNotFound }));
         return;
       }
 
@@ -146,20 +144,17 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
       setLongitude(parseFloat(result.lon).toFixed(4));
       setPlace(result.display_name.split(',').slice(0, 2).join(',').trim());
 
-      // Try to guess timezone from coordinates
       await guessTimezone(parseFloat(result.lat), parseFloat(result.lon));
 
       setErrors(e => ({ ...e, place: undefined, latitude: undefined, longitude: undefined }));
     } catch {
-      setErrors(e => ({ ...e, place: 'Failed to search location. Please enter coordinates manually.' }));
+      setErrors(e => ({ ...e, place: t.form.placeFailed }));
     } finally {
       setSearching(false);
     }
-  }, [place]);
+  }, [place, t.form]);
 
   const guessTimezone = async (lat: number, lon: number) => {
-    // Use Nominatim reverse geocoding to get country code, then guess timezone
-    // This is a best-effort approach; user can always correct it
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
@@ -167,7 +162,6 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
       );
       const data = await response.json() as { address?: { country_code?: string } };
       const cc = data.address?.country_code?.toLowerCase();
-      // Map common country codes to sensible default timezones
       const countryTZ: Record<string, string> = {
         'in': 'Asia/Kolkata',
         'us': 'America/New_York',
@@ -194,7 +188,6 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
 
     setSubmitting(true);
     try {
-      // Compute UTC offset for the selected timezone at the birth date (accounts for DST)
       const utcOffset = getTimezoneOffsetMinutes(timezone, date, time);
 
       await onSubmit({
@@ -221,42 +214,42 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
       {/* Personal info */}
       <section className="space-y-4">
         <h2 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-          Personal details
+          {t.form.personalDetails}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
-            label="Full name"
+            label={t.form.fullName}
             required
             value={name}
             onChange={e => setName(e.target.value)}
             error={errors.name}
-            placeholder="Enter name"
+            placeholder={t.form.namePlaceholder}
             leftIcon={<User size={14} />}
           />
           <Select
-            label="Gender"
+            label={t.form.gender}
             value={gender}
             onChange={e => setGender(e.target.value)}
             options={GENDER_OPTIONS}
           />
         </div>
         <Input
-          label="Notes"
+          label={t.form.notes}
           value={notes}
           onChange={e => setNotes(e.target.value)}
-          placeholder="Optional notes about this profile"
-          hint="Visible only to you, stored locally"
+          placeholder={t.form.notesPlaceholder}
+          hint={t.form.notesHint}
         />
       </section>
 
       {/* Birth date & time */}
       <section className="space-y-4">
         <h2 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-          Birth date & time
+          {t.form.birthDateTime}
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
-            label="Date of birth"
+            label={t.form.dateOfBirth}
             type="date"
             required
             value={date}
@@ -265,13 +258,13 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
             leftIcon={<Calendar size={14} />}
           />
           <Input
-            label="Time of birth"
+            label={t.form.timeOfBirth}
             type="time"
             required
             value={time}
             onChange={e => setTime(e.target.value)}
             error={errors.time}
-            hint="24-hour format"
+            hint={t.form.timeHint}
             leftIcon={<Clock size={14} />}
           />
         </div>
@@ -280,17 +273,17 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
       {/* Birth place */}
       <section className="space-y-4">
         <h2 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-          Birth location
+          {t.form.birthLocation}
         </h2>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex-1">
             <Input
-              label="Birth place"
+              label={t.form.birthPlace}
               required
               value={place}
               onChange={e => setPlace(e.target.value)}
               error={errors.place}
-              placeholder="City, Country (e.g. Mumbai, India)"
+              placeholder={t.form.birthPlacePlaceholder}
               leftIcon={<MapPin size={14} />}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -310,14 +303,14 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
               className="w-full sm:w-auto"
             >
               <Search size={14} />
-              Search location
+              {t.form.searchLocation}
             </Button>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Latitude"
+            label={t.form.latitude}
             type="number"
             step="0.0001"
             min="-90"
@@ -326,11 +319,11 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
             value={latitude}
             onChange={e => setLatitude(e.target.value)}
             error={errors.latitude}
-            placeholder="e.g. 19.0760"
-            hint="Decimal degrees, N is positive"
+            placeholder={t.form.latitudePlaceholder}
+            hint={t.form.latitudeHint}
           />
           <Input
-            label="Longitude"
+            label={t.form.longitude}
             type="number"
             step="0.0001"
             min="-180"
@@ -339,26 +332,26 @@ export function BirthDetailsForm({ defaultValues, onSubmit, submitLabel = 'Save 
             value={longitude}
             onChange={e => setLongitude(e.target.value)}
             error={errors.longitude}
-            placeholder="e.g. 72.8777"
-            hint="Decimal degrees, E is positive"
+            placeholder={t.form.longitudePlaceholder}
+            hint={t.form.longitudeHint}
           />
         </div>
 
         <Select
-          label="Timezone"
+          label={t.form.timezone}
           required
           value={timezone}
           onChange={e => setTimezone(e.target.value)}
           error={errors.timezone}
           options={TIMEZONE_OPTIONS}
-          hint="Select the timezone at the birth location"
+          hint={t.form.timezoneHint}
         />
       </section>
 
       {/* Submit */}
       <div className="flex justify-end gap-3 pt-2">
         <Button type="submit" variant="primary" loading={submitting} className="w-full sm:w-auto">
-          {submitLabel}
+          {submitLabel ?? t.form.saveProfile}
         </Button>
       </div>
     </form>

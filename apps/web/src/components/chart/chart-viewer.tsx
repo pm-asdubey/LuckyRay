@@ -2,9 +2,12 @@
 
 import { useState } from 'react';
 import type { CanonicalChart, PlanetPosition, HouseData } from '@luckyray/shared';
-import { PLANET_ABBREVIATIONS } from '@luckyray/shared';
 import { Badge } from '@/components/ui/badge';
-import { getNorthIndianHouseGeometry, SIGN_ABBREVIATIONS } from '@/lib/chart-geometry';
+import { getNorthIndianHouseGeometry } from '@/lib/chart-geometry';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateSign, SIGN_ABBR_HINDI, PLANET_ABBR_HINDI } from '@/lib/i18n';
+import { useTranslation } from '@/hooks/use-translation';
+import { PLANET_ABBREVIATIONS, SIGN_IDS } from '@luckyray/shared';
 
 interface ChartViewerProps {
   chart: CanonicalChart;
@@ -14,8 +17,17 @@ const SIZE = 320;
 const CX = SIZE / 2;
 const CY = SIZE / 2;
 
+// English abbreviations for signs
+const SIGN_ABBR_EN: Record<string, string> = {
+  Aries: 'Ar', Taurus: 'Ta', Gemini: 'Ge', Cancer: 'Ca',
+  Leo: 'Le', Virgo: 'Vi', Libra: 'Li', Scorpio: 'Sc',
+  Sagittarius: 'Sg', Capricorn: 'Cp', Aquarius: 'Aq', Pisces: 'Pi',
+};
+
 export function ChartViewer({ chart }: ChartViewerProps) {
   const [hoveredHouse, setHoveredHouse] = useState<number | null>(null);
+  const language = useAppStore(s => s.language);
+  const t = useTranslation();
 
   const housePlanets = new Map<number, PlanetPosition[]>();
   for (const planet of chart.planets) {
@@ -26,12 +38,22 @@ export function ChartViewer({ chart }: ChartViewerProps) {
 
   const ascSignIndex = chart.ascendant.signIndex;
 
-  // North Indian chart: house positions are FIXED. Signs rotate counter-clockwise
-  // starting with the ascendant sign in the H1 (top) compartment.
-  const getHouseSign = (housePos: number): string => {
+  const getHouseSignAbbr = (housePos: number): string => {
     const signIndex = (ascSignIndex + housePos - 1) % 12;
-    return SIGN_ABBREVIATIONS[signIndex] ?? '';
+    const signName = SIGN_IDS[signIndex] ?? '';
+    if (language === 'hi') return SIGN_ABBR_HINDI[signName] ?? signName.slice(0, 2);
+    return SIGN_ABBR_EN[signName] ?? signName.slice(0, 2);
   };
+
+  const getPlanetAbbr = (planet: PlanetPosition): string => {
+    if (language === 'hi') return PLANET_ABBR_HINDI[planet.id] ?? planet.id.slice(0, 2);
+    return PLANET_ABBREVIATIONS[planet.id] ?? planet.id.slice(0, 2);
+  };
+
+  const lagnaLabel = t.chart.lagnaLabel;
+  const lagnaSign = language === 'hi'
+    ? (SIGN_ABBR_HINDI[chart.ascendant.sign] ?? chart.ascendant.sign.slice(0, 3))
+    : chart.ascendant.sign.slice(0, 3).toUpperCase();
 
   const houses = getNorthIndianHouseGeometry(SIZE);
   const stroke = 'hsl(258 30% 18%)';
@@ -52,7 +74,7 @@ export function ChartViewer({ chart }: ChartViewerProps) {
           {houses.map(({ house: houseNum, points, cx: hcx, cy: hcy }) => {
             const isHov = hoveredHouse === houseNum;
             const planets = housePlanets.get(houseNum) ?? [];
-            const sign = getHouseSign(houseNum);
+            const signAbbr = getHouseSignAbbr(houseNum);
             const houseData = chart.houses.find(h => h.number === houseNum);
 
             return (
@@ -72,7 +94,7 @@ export function ChartViewer({ chart }: ChartViewerProps) {
                   strokeWidth="1"
                 />
 
-                {/* House number — small, above the sign abbreviation */}
+                {/* House number */}
                 <text
                   x={hcx} y={hcy - 10}
                   textAnchor="middle"
@@ -87,28 +109,27 @@ export function ChartViewer({ chart }: ChartViewerProps) {
                 <text
                   x={hcx} y={hcy}
                   textAnchor="middle"
-                  fontSize="8.5"
+                  fontSize={language === 'hi' ? '7' : '8.5'}
                   fill={isHov ? 'hsl(258 60% 60%)' : 'hsl(258 20% 45%)'}
                   fontFamily="system-ui"
                   fontStyle="italic"
                 >
-                  {sign}
+                  {signAbbr}
                 </text>
 
-                {/* Planets (up to 4 to avoid overflowing small compartments) */}
+                {/* Planets */}
                 {planets.slice(0, 4).map((planet, i) => (
                   <text
                     key={planet.id}
                     x={hcx}
                     y={hcy + 12 + i * 11}
                     textAnchor="middle"
-                    fontSize="9.5"
+                    fontSize={language === 'hi' ? '8' : '9.5'}
                     fontWeight="600"
                     fill={getPlanetColor(planet)}
                     fontFamily="system-ui"
                   >
-                    {PLANET_ABBREVIATIONS[planet.id] ?? planet.id.slice(0, 2)}
-                    {planet.isRetrograde ? '℞' : ''}
+                    {getPlanetAbbr(planet)}{planet.isRetrograde ? '℞' : ''}
                   </text>
                 ))}
               </g>
@@ -125,7 +146,7 @@ export function ChartViewer({ chart }: ChartViewerProps) {
             letterSpacing="0.8"
             fontWeight="500"
           >
-            {chart.ascendant.sign.slice(0, 3).toUpperCase()}
+            {lagnaSign}
           </text>
           <text
             x={CX} y={CY + 8}
@@ -135,7 +156,7 @@ export function ChartViewer({ chart }: ChartViewerProps) {
             fontFamily="system-ui"
             letterSpacing="1.5"
           >
-            LAGNA
+            {lagnaLabel}
           </text>
         </svg>
       </div>
@@ -165,13 +186,18 @@ function getPlanetColor(planet: PlanetPosition): string {
 }
 
 function HouseTooltip({ house, planets }: { house: HouseData; planets: PlanetPosition[] }) {
+  const language = useAppStore(s => s.language);
+  const t = useTranslation();
+  const signName = translateSign(house.sign, language);
+  const lordName = translatePlanet(house.lord, language);
+
   return (
     <div className="rounded-xl border border-surface-border bg-surface-elevated px-4 py-3 space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-content">
-          House {house.number} · {house.sign}
+          {t.chart.house} {house.number} · {signName}
         </span>
-        <span className="text-2xs text-content-muted">Lord: {house.lord}</span>
+        <span className="text-2xs text-content-muted">{t.chart.lord}: {lordName}</span>
       </div>
       {planets.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -180,7 +206,7 @@ function HouseTooltip({ house, planets }: { house: HouseData; planets: PlanetPos
               key={p.id}
               variant={p.isExalted ? 'gold' : p.isDebilitated ? 'error' : 'default'}
             >
-              {p.id}{p.isRetrograde ? ' ℞' : ''}
+              {translatePlanet(p.id, language)}{p.isRetrograde ? ' ℞' : ''}
             </Badge>
           ))}
         </div>

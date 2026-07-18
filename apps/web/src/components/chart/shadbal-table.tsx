@@ -19,6 +19,9 @@
 import type { PlanetPosition } from '@luckyray/shared';
 import { PLANET_SYMBOLS } from '@luckyray/shared';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateDignity } from '@/lib/i18n';
 
 interface ShadbalTableProps {
   planets: PlanetPosition[];
@@ -92,6 +95,7 @@ function StrengthBar({ value }: { value: number }) {
 }
 
 export function ShadbalTable({ planets }: ShadbalTableProps) {
+  const language = useAppStore(s => s.language);
   const visiblePlanets = planets.filter(p => !['Rahu', 'Ketu'].includes(p.id));
 
   return (
@@ -125,8 +129,8 @@ export function ShadbalTable({ planets }: ShadbalTableProps) {
             <div className="flex items-center gap-2">
               <span className="text-base" aria-hidden>{symbol}</span>
               <div>
-                <div className="text-xs font-semibold text-content">{planet.id}</div>
-                <div className="text-2xs text-content-muted">{planet.dignity}</div>
+                <div className="text-xs font-semibold text-content">{translatePlanet(planet.id, language)}</div>
+                <div className="text-2xs text-content-muted">{planet.dignity ? translateDignity(planet.dignity, language) : ''}</div>
               </div>
             </div>
 

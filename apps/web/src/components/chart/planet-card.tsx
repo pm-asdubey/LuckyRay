@@ -6,24 +6,36 @@ import type { PlanetPosition } from '@luckyray/shared';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { formatDegrees } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateSign, translateNakshatra, translateDignity } from '@/lib/i18n';
 
 interface PlanetCardProps {
   planet: PlanetPosition;
 }
 
-const dignityBadge: Record<string, { variant: 'gold' | 'success' | 'accent' | 'default' | 'error' | 'warning'; label: string }> = {
-  Exalted:       { variant: 'gold',    label: 'Exalted' },
-  Moolatrikona:  { variant: 'success', label: 'Moolatrikona' },
-  OwnSign:       { variant: 'accent',  label: 'Own sign' },
-  FriendlySign:  { variant: 'default', label: 'Friendly' },
-  NeutralSign:   { variant: 'default', label: 'Neutral' },
-  EnemySign:     { variant: 'warning', label: 'Enemy' },
-  Debilitated:   { variant: 'error',   label: 'Debilitated' },
+const dignityVariant: Record<string, 'gold' | 'success' | 'accent' | 'default' | 'error' | 'warning'> = {
+  Exalted: 'gold',
+  Moolatrikona: 'success',
+  OwnSign: 'accent',
+  FriendlySign: 'default',
+  NeutralSign: 'default',
+  EnemySign: 'warning',
+  Debilitated: 'error',
 };
 
 export function PlanetCard({ planet }: PlanetCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const dignity = dignityBadge[planet.dignity] ?? { variant: 'default' as const, label: planet.dignity };
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
+  const pc = t.chart.planetCard;
+
+  const dignityLabel = translateDignity(planet.dignity, language);
+  const variant = dignityVariant[planet.dignity] ?? 'default';
+
+  const planetName = translatePlanet(planet.name, language);
+  const signName = translateSign(planet.sign, language);
+  const nakshatraName = translateNakshatra(planet.nakshatra, language);
 
   return (
     <div
@@ -43,17 +55,17 @@ export function PlanetCard({ planet }: PlanetCardProps) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-content">{planet.name}</span>
+            <span className="text-sm font-semibold text-content">{planetName}</span>
             <span className="text-2xs text-content-subtle">({planet.sanskritName})</span>
             {planet.isRetrograde && <Badge variant="accent">℞</Badge>}
-            {planet.isCombust && <Badge variant="warning">Combust</Badge>}
+            {planet.isCombust && <Badge variant="warning">{pc.combust}</Badge>}
           </div>
           <div className="text-xs text-content-muted mt-0.5">
-            {planet.sign} · House {planet.house} · {formatDegrees(planet.degreesInSign, planet.minutesInSign)}
+            {signName} · {pc.house} {planet.house} · {formatDegrees(planet.degreesInSign, planet.minutesInSign)}
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <Badge variant={dignity.variant}>{dignity.label}</Badge>
+          <Badge variant={variant}>{dignityLabel}</Badge>
           {expanded ? <ChevronUp size={14} className="text-content-subtle" /> : <ChevronDown size={14} className="text-content-subtle" />}
         </div>
       </button>
@@ -64,32 +76,35 @@ export function PlanetCard({ planet }: PlanetCardProps) {
           className="px-4 pb-4 pt-0 border-t border-surface-border"
         >
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
-            <InfoItem label="Nakshatra" value={`${planet.nakshatra} (P${planet.pada})`} />
-            <InfoItem label="Sign" value={planet.sign} />
-            <InfoItem label="House" value={planet.house.toString()} />
-            <InfoItem label="Degree" value={formatDegrees(planet.degreesInSign, planet.minutesInSign)} />
-            <InfoItem label="Sidereal Long." value={`${planet.siderealLongitude.toFixed(2)}°`} />
+            <InfoItem label={pc.nakshatra} value={`${nakshatraName} (P${planet.pada})`} />
+            <InfoItem label={pc.sign} value={signName} />
+            <InfoItem label={pc.house} value={planet.house.toString()} />
+            <InfoItem label={pc.degree} value={formatDegrees(planet.degreesInSign, planet.minutesInSign)} />
+            <InfoItem label={pc.siderealLong} value={`${planet.siderealLongitude.toFixed(2)}°`} />
             <InfoItem
-              label="Retrograde"
-              value={planet.isRetrograde ? 'Yes' : 'No'}
+              label={pc.retrograde}
+              value={planet.isRetrograde ? pc.yes : pc.no}
               highlight={planet.isRetrograde}
             />
             <InfoItem
-              label="Combust"
-              value={planet.isCombust ? 'Yes' : 'No'}
+              label={pc.combust}
+              value={planet.isCombust ? pc.yes : pc.no}
               highlight={planet.isCombust}
             />
             <InfoItem
-              label="Exalted"
-              value={planet.isExalted ? 'Yes' : 'No'}
+              label={pc.exalted}
+              value={planet.isExalted ? pc.yes : pc.no}
               positive={planet.isExalted}
             />
             <InfoItem
-              label="Debilitated"
-              value={planet.isDebilitated ? 'Yes' : 'No'}
+              label={pc.debilitated}
+              value={planet.isDebilitated ? pc.yes : pc.no}
               highlight={planet.isDebilitated}
             />
-            <InfoItem label="Nature" value={planet.naturalBenefic ? 'Natural Benefic' : 'Natural Malefic'} />
+            <InfoItem
+              label={pc.nature}
+              value={planet.naturalBenefic ? pc.naturalBenefic : pc.naturalMalefic}
+            />
           </div>
         </div>
       )}
@@ -98,15 +113,9 @@ export function PlanetCard({ planet }: PlanetCardProps) {
 }
 
 function InfoItem({
-  label,
-  value,
-  highlight,
-  positive,
+  label, value, highlight, positive,
 }: {
-  label: string;
-  value: string;
-  highlight?: boolean;
-  positive?: boolean;
+  label: string; value: string; highlight?: boolean; positive?: boolean;
 }) {
   return (
     <div>

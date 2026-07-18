@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { LuckyRayLogo } from '@/components/brand/logo';
 import { useAppStore } from '@/store/app-store';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -42,11 +43,18 @@ interface ReportState {
 
 import { Briefcase, Heart, Coins, Stethoscope } from 'lucide-react';
 
-const REPORT_META: Record<ReportType, { title: string; subtitle: string; icon: React.ReactNode }> = {
-  career: { title: 'Career & Profession', subtitle: '10th house, dashas, timing', icon: <Briefcase size={15} /> },
-  love:   { title: 'Love & Marriage',     subtitle: '7th house, Venus, timing',   icon: <Heart size={15} /> },
-  wealth: { title: 'Wealth & Finance',    subtitle: '2nd, 11th, Dhana yogas',     icon: <Coins size={15} /> },
-  health: { title: 'Health & Vitality',   subtitle: 'Lagna, 6th, 8th house',      icon: <Stethoscope size={15} /> },
+const REPORT_ICONS: Record<ReportType, React.ReactNode> = {
+  career: <Briefcase size={15} />,
+  love:   <Heart size={15} />,
+  wealth: <Coins size={15} />,
+  health: <Stethoscope size={15} />,
+};
+
+const REPORT_META: Record<ReportType, { title: string; subtitle: string }> = {
+  career: { title: 'Career & Profession', subtitle: '10th house, dashas, timing' },
+  love:   { title: 'Love & Marriage',     subtitle: '7th house, Venus, timing' },
+  wealth: { title: 'Wealth & Finance',    subtitle: '2nd, 11th, Dhana yogas' },
+  health: { title: 'Health & Vitality',   subtitle: 'Lagna, 6th, 8th house' },
 };
 
 const REPORT_TYPES: ReportType[] = ['career', 'love', 'wealth', 'health'];
@@ -654,6 +662,7 @@ export default function ReportsPage() {
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({});
   const abortRef = useRef<AbortController | null>(null);
   const { addToast } = useAppStore();
+  const t = useTranslation();
 
   useEffect(() => {
     setLoading(true);
@@ -795,11 +804,11 @@ export default function ReportsPage() {
     addToast({ type: 'info', message: 'Generating PDF…' });
     try {
       await downloadAsPDF(reportType, state.sections, profile.name);
-      addToast({ type: 'success', message: 'PDF downloaded' });
+      addToast({ type: 'success', message: t.reports.download });
     } catch (e) {
       addToast({ type: 'error', message: 'PDF generation failed' });
     }
-  }, [reports, profile, addToast]);
+  }, [reports, profile, addToast, t]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -848,11 +857,11 @@ export default function ReportsPage() {
         <Sidebar />
         <PageLayout className="overflow-hidden">
           <PageHeader
-            title="Jyotish Reports"
+            title={t.reports.title}
             description={profile.name}
             back={
               <Link href={`/chart/${profile.id}`}>
-                <Button variant="icon" size="sm" aria-label="Back">
+                <Button variant="icon" size="sm" aria-label={t.common.back}>
                   <ArrowLeft size={16} />
                 </Button>
               </Link>
@@ -860,7 +869,7 @@ export default function ReportsPage() {
             actions={
               isDone ? (
                 <Button variant="ghost" size="sm" onClick={() => handleDownloadPDF(selectedReport)}>
-                  <Download size={14} className="mr-1.5" /> Download PDF
+                  <Download size={14} className="mr-1.5" /> {t.reports.download}
                 </Button>
               ) : undefined
             }
@@ -869,9 +878,9 @@ export default function ReportsPage() {
           {!chart ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center space-y-3">
-                <p className="text-content-muted text-sm">No chart generated yet.</p>
+                <p className="text-content-muted text-sm">{t.reports.noChart}</p>
                 <Link href={`/chart/${profile.id}`}>
-                  <Button variant="primary">Generate Chart First</Button>
+                  <Button variant="primary">{t.reports.generateChartFirst}</Button>
                 </Link>
               </div>
             </div>
@@ -880,7 +889,6 @@ export default function ReportsPage() {
               {/* Report type tabs */}
               <div className="flex border-b border-surface-border shrink-0 overflow-x-auto">
                 {REPORT_TYPES.map(type => {
-                  const meta = REPORT_META[type];
                   const state = reports[type];
                   const isActive = selectedReport === type;
 
@@ -896,9 +904,9 @@ export default function ReportsPage() {
                       )}
                     >
                       <span className={isActive ? 'text-accent' : 'text-content-subtle'}>
-                        {meta.icon}
+                        {REPORT_ICONS[type]}
                       </span>
-                      <span className="font-medium">{meta.title}</span>
+                      <span className="font-medium">{t.reports.reportTypes[type]}</span>
                       {state?.status === 'done' && <CheckCircle2 size={12} className="text-green-500" />}
                       {state?.status === 'generating' && <Loader2 size={12} className="animate-spin text-accent" />}
                     </button>
@@ -912,19 +920,19 @@ export default function ReportsPage() {
                   {/* Controls row */}
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <h2 className="text-sm font-semibold text-content">{REPORT_META[selectedReport].title}</h2>
+                      <h2 className="text-sm font-semibold text-content">{t.reports.reportTypes[selectedReport]}</h2>
                       {isGenerating && (
                         <p className="text-xs text-content-muted mt-0.5">
-                          Section {completedSections + 1}/{totalSections} — auto-continues if cut off · retries on rate limit
+                          {t.reports.sectionProgress(completedSections + 1, totalSections)}
                         </p>
                       )}
                       {isDone && (
-                        <p className="text-xs text-content-muted mt-0.5">{completedSections} sections complete</p>
+                        <p className="text-xs text-content-muted mt-0.5">{t.reports.sectionsComplete(completedSections)}</p>
                       )}
                     </div>
                     <div className="flex items-center gap-2">
                       {isGenerating ? (
-                        <Button variant="ghost" size="sm" onClick={cancelGeneration}>Cancel</Button>
+                        <Button variant="ghost" size="sm" onClick={cancelGeneration}>{t.reports.cancel}</Button>
                       ) : (
                         <Button
                           variant={currentReport ? 'ghost' : 'primary'}
@@ -932,8 +940,8 @@ export default function ReportsPage() {
                           onClick={() => generateReport(selectedReport)}
                         >
                           {currentReport
-                            ? <><RefreshCw size={13} className="mr-1.5" /> Regenerate</>
-                            : <><Play size={13} className="mr-1.5" /> Generate</>}
+                            ? <><RefreshCw size={13} className="mr-1.5" /> {t.reports.regenerate}</>
+                            : <><Play size={13} className="mr-1.5" /> {t.reports.generate}</>}
                         </Button>
                       )}
                     </div>
@@ -953,14 +961,12 @@ export default function ReportsPage() {
                   {!currentReport && (
                     <div className="rounded-xl border border-dashed border-surface-border bg-surface-elevated p-10 text-center space-y-3">
                       <div className="flex justify-center"><LuckyRayLogo size={48} /></div>
-                      <p className="text-sm font-medium text-content">{REPORT_META[selectedReport].title} Report</p>
+                      <p className="text-sm font-medium text-content">{t.reports.reportTypes[selectedReport]}</p>
                       <p className="text-xs text-content-muted max-w-sm mx-auto leading-relaxed">
-                        6 deep sections — natal architecture, yogas, KP promise analysis, dasha timing
-                        (MD → AD → Pratyantar), transits, and final predictions with confidence levels.
-                        Auto-continues and retries — will not stop until complete.
+                        {t.reports.reportSubtitles[selectedReport]}
                       </p>
                       <Button variant="primary" onClick={() => generateReport(selectedReport)}>
-                        <Play size={14} className="mr-1.5" /> Generate Report
+                        <Play size={14} className="mr-1.5" /> {t.reports.generate}
                       </Button>
                     </div>
                   )}

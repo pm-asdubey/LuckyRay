@@ -13,6 +13,8 @@ import { Dialog } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useAppStore } from '@/store/app-store';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTranslation } from '@/hooks/use-translation';
+import type { Language } from '@/lib/i18n';
 
 const AI_MODELS = [
   { value: 'meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B (Recommended)' },
@@ -25,12 +27,18 @@ const CHART_STYLES = [
   { value: 'south-indian', label: 'South Indian' },
 ];
 
+const LANGUAGE_OPTIONS: { value: Language; label: string }[] = [
+  { value: 'en', label: 'English' },
+  { value: 'hi', label: 'हिंदी (Hindi)' },
+];
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const { addToast, settings: storeSettings, updateSettings } = useAppStore();
+  const { addToast, settings: storeSettings, updateSettings, language, setLanguage } = useAppStore();
+  const t = useTranslation();
 
   useEffect(() => {
     getAllSettings()
@@ -43,7 +51,6 @@ export default function SettingsPage() {
     const updated = { ...settings, ...partial };
     setSaving(true);
     try {
-      // Persist each changed key individually
       await Promise.all(
         (Object.keys(partial) as (keyof AppSettings)[]).map(k =>
           setSetting(k, (updated as AppSettings)[k] as AppSettings[typeof k]),
@@ -51,9 +58,9 @@ export default function SettingsPage() {
       );
       setSettings(updated);
       updateSettings(partial);
-      addToast({ type: 'success', message: 'Settings saved' });
+      addToast({ type: 'success', message: t.settings.saved });
     } catch {
-      addToast({ type: 'error', message: 'Failed to save settings' });
+      addToast({ type: 'error', message: t.settings.saveFailed });
     } finally {
       setSaving(false);
     }
@@ -62,11 +69,11 @@ export default function SettingsPage() {
   const handleDeleteAll = async () => {
     try {
       await deleteAllData();
-      addToast({ type: 'success', message: 'All data deleted' });
+      addToast({ type: 'success', message: t.settings.dataDeleted });
       setShowDeleteDialog(false);
       window.location.reload();
     } catch {
-      addToast({ type: 'error', message: 'Failed to delete data' });
+      addToast({ type: 'error', message: t.settings.deleteFailed });
     }
   };
 
@@ -94,27 +101,52 @@ export default function SettingsPage() {
       <div className="flex h-screen">
         <Sidebar />
         <PageLayout>
-          <PageHeader title="Settings" description="Configure your LuckyRay experience" />
+          <PageHeader title={t.settings.title} description={t.settings.description} />
           <PageContent className="max-w-xl space-y-4 pb-24 md:pb-6">
+
+            {/* Language */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.settings.language}</CardTitle>
+                <CardDescription>{t.settings.languageDesc}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex rounded-lg border border-surface-border overflow-hidden w-fit">
+                  {LANGUAGE_OPTIONS.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setLanguage(opt.value)}
+                      className={`px-4 py-2 text-sm font-medium transition-colors ${
+                        language === opt.value
+                          ? 'bg-accent text-white'
+                          : 'text-content-muted hover:text-content hover:bg-surface-elevated'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
             {/* AI Settings */}
             <Card>
               <CardHeader>
-                <CardTitle>AI Model</CardTitle>
+                <CardTitle>{t.settings.aiModel}</CardTitle>
                 <CardDescription>
-                  NVIDIA NIM powers all AI interpretations. Requires <code className="text-accent">NVIDIA_API_KEY</code> environment variable.
+                  {t.settings.aiModelDesc(<code className="text-accent">NVIDIA_API_KEY</code> as unknown as string)}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <Select
-                  label="Model"
+                  label={t.settings.model}
                   value={settings.aiModel}
                   onChange={e => handleSave({ aiModel: e.target.value })}
                   options={AI_MODELS}
                   disabled={saving}
                 />
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-content-muted">Provider</span>
+                  <span className="text-xs text-content-muted">{t.settings.provider}</span>
                   <Badge variant="default">NVIDIA NIM</Badge>
                 </div>
               </CardContent>
@@ -123,14 +155,12 @@ export default function SettingsPage() {
             {/* Chart Settings */}
             <Card>
               <CardHeader>
-                <CardTitle>Chart display</CardTitle>
-                <CardDescription>
-                  How birth charts are rendered.
-                </CardDescription>
+                <CardTitle>{t.settings.chartDisplay}</CardTitle>
+                <CardDescription>{t.settings.chartDisplayDesc}</CardDescription>
               </CardHeader>
               <CardContent>
                 <Select
-                  label="Chart style"
+                  label={t.settings.chartStyle}
                   value={settings.chartStyle}
                   onChange={e => handleSave({ chartStyle: e.target.value as AppSettings['chartStyle'] })}
                   options={CHART_STYLES}
@@ -142,19 +172,19 @@ export default function SettingsPage() {
             {/* Appearance */}
             <Card>
               <CardHeader>
-                <CardTitle>Appearance</CardTitle>
+                <CardTitle>{t.settings.appearance}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <ToggleRow
-                  label="Animations"
-                  description="Subtle transitions and loading animations"
+                  label={t.settings.animations}
+                  description={t.settings.animationsDesc}
                   checked={settings.animationsEnabled}
                   onChange={v => handleSave({ animationsEnabled: v })}
                   disabled={saving}
                 />
                 <ToggleRow
-                  label="Debug mode"
-                  description="Show calculation details and engine metadata"
+                  label={t.settings.debugMode}
+                  description={t.settings.debugModeDesc}
                   checked={settings.debugMode}
                   onChange={v => handleSave({ debugMode: v })}
                   disabled={saving}
@@ -165,16 +195,14 @@ export default function SettingsPage() {
             {/* Data management */}
             <Card>
               <CardHeader>
-                <CardTitle>Data management</CardTitle>
-                <CardDescription>
-                  All data is stored locally in your browser. Nothing is sent to external servers except AI queries.
-                </CardDescription>
+                <CardTitle>{t.settings.dataManagement}</CardTitle>
+                <CardDescription>{t.settings.dataManagementDesc}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-content">Export all data</div>
-                    <div className="text-xs text-content-muted">Download a complete JSON backup</div>
+                    <div className="text-sm font-medium text-content">{t.settings.exportAllData}</div>
+                    <div className="text-xs text-content-muted">{t.settings.exportDesc}</div>
                   </div>
                   <Button
                     variant="secondary"
@@ -189,17 +217,17 @@ export default function SettingsPage() {
                       a.download = `luckyray-backup-${new Date().toISOString().slice(0, 10)}.json`;
                       a.click();
                       URL.revokeObjectURL(url);
-                      addToast({ type: 'success', message: 'Data exported' });
+                      addToast({ type: 'success', message: t.settings.dataExported });
                     }}
                   >
-                    Export
+                    {t.settings.export}
                   </Button>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-content">Import data</div>
-                    <div className="text-xs text-content-muted">Restore from a JSON backup file</div>
+                    <div className="text-sm font-medium text-content">{t.settings.importData}</div>
+                    <div className="text-xs text-content-muted">{t.settings.importDesc}</div>
                   </div>
                   <Button
                     variant="secondary"
@@ -224,21 +252,21 @@ export default function SettingsPage() {
                       input.click();
                     }}
                   >
-                    Import
+                    {t.settings.import}
                   </Button>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div>
-                    <div className="text-sm font-medium text-error">Delete all data</div>
-                    <div className="text-xs text-content-muted">Permanently remove all profiles, charts, and conversations</div>
+                    <div className="text-sm font-medium text-error">{t.settings.deleteAllData}</div>
+                    <div className="text-xs text-content-muted">{t.settings.deleteAllDesc}</div>
                   </div>
                   <Button
                     variant="destructive"
                     size="sm"
                     onClick={() => setShowDeleteDialog(true)}
                   >
-                    Delete all
+                    {t.settings.deleteAll}
                   </Button>
                 </div>
               </CardContent>
@@ -247,15 +275,15 @@ export default function SettingsPage() {
             {/* About */}
             <Card>
               <CardHeader>
-                <CardTitle>About LuckyRay</CardTitle>
+                <CardTitle>{t.settings.aboutTitle}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <InfoRow label="Engine version" value="1.0.0" />
-                <InfoRow label="Ayanamsa" value="Lahiri (Chitrapaksha)" />
-                <InfoRow label="House system" value="Whole Sign (Parashari)" />
-                <InfoRow label="Dasha system" value="Vimshottari (120-year cycle)" />
-                <InfoRow label="Ephemeris" value="astronomy-engine (VSOP87)" />
-                <InfoRow label="Storage" value="IndexedDB (local-first)" />
+                <InfoRow label={t.settings.engineVersion} value="1.0.0" />
+                <InfoRow label={t.settings.ayanamsa} value="Lahiri (Chitrapaksha)" />
+                <InfoRow label={t.settings.houseSystem} value="Whole Sign (Parashari)" />
+                <InfoRow label={t.settings.dashaSystem} value="Vimshottari (120-year cycle)" />
+                <InfoRow label={t.settings.ephemeris} value="astronomy-engine (VSOP87)" />
+                <InfoRow label={t.settings.storage} value="IndexedDB (local-first)" />
               </CardContent>
             </Card>
           </PageContent>
@@ -266,16 +294,13 @@ export default function SettingsPage() {
       <Dialog
         open={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
-        title="Delete all data?"
+        title={t.settings.deleteDialogTitle}
       >
         <div className="space-y-4">
-          <p className="text-sm text-content-muted">
-            This will permanently delete all profiles, birth charts, conversations, and settings.
-            This action cannot be undone.
-          </p>
+          <p className="text-sm text-content-muted">{t.settings.deleteDialogDesc}</p>
           <div className="flex gap-2 justify-end">
-            <Button variant="ghost" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDeleteAll}>Delete everything</Button>
+            <Button variant="ghost" onClick={() => setShowDeleteDialog(false)}>{t.settings.cancel}</Button>
+            <Button variant="destructive" onClick={handleDeleteAll}>{t.settings.deleteEverything}</Button>
           </div>
         </div>
       </Dialog>
@@ -284,17 +309,9 @@ export default function SettingsPage() {
 }
 
 function ToggleRow({
-  label,
-  description,
-  checked,
-  onChange,
-  disabled,
+  label, description, checked, onChange, disabled,
 }: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
+  label: string; description: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between">

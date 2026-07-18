@@ -24,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useAppStore } from '@/store/app-store';
 import { useAIChat } from '@/hooks/use-ai-chat';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
 
 // ─── Dynamic Suggestions ──────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ export default function ChatPage() {
   // Mirror of messages state for use in async callbacks without stale closures
   const messagesRef = useRef<Message[]>([]);
   const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming, appMode } = useAppStore();
+  const t = useTranslation();
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -399,23 +401,23 @@ export default function ChatPage() {
             <div className="flex-1 min-w-0">
               <div className="text-sm font-semibold text-content truncate">{profile.name}</div>
               <div className="text-xs text-content-muted">
-                {messages.length > 0 ? `${messages.length} messages` : 'Jyotish advisor'}
+                {messages.length > 0 ? t.chatPage.messageCount(messages.length) : t.chatPage.jyotishAdvisor}
               </div>
             </div>
             <Button
               variant="ghost"
               size="sm"
               onClick={handleNewChat}
-              aria-label="Start new conversation"
-              title="New conversation"
+              aria-label={t.chatPage.newChat}
+              title={t.chatPage.newChat}
             >
               <Plus size={14} />
-              <span className="hidden sm:inline">New chat</span>
+              <span className="hidden sm:inline">{t.chatPage.newChat}</span>
             </Button>
             <Link href={`/chart/${profile.id}`}>
               <Button variant="ghost" size="sm">
                 <LayoutDashboard size={14} />
-                <span className="hidden sm:inline">View chart</span>
+                <span className="hidden sm:inline">{t.chatPage.viewChart}</span>
               </Button>
             </Link>
           </div>
@@ -424,11 +426,11 @@ export default function ChatPage() {
           {!storedChart && (
             <div className="px-4 py-3 bg-warning/10 border-b border-warning/20">
               <p className="text-xs text-warning">
-                No chart generated yet.{' '}
+                {t.chatPage.noChartWarning}{' '}
                 <Link href={`/chart/${profile.id}`} className="underline hover:no-underline">
-                  Generate a chart
+                  {t.chatPage.noChartLink}
                 </Link>{' '}
-                to enable context-aware answers.
+                {t.chatPage.noChartSuffix}
               </p>
             </div>
           )}
@@ -444,10 +446,10 @@ export default function ChatPage() {
                 </div>
                 <div className="space-y-1.5">
                   <h2 className="text-sm font-semibold text-content">
-                    Ask about {profile.name}&apos;s chart
+                    {t.chatPage.askAbout(profile.name)}
                   </h2>
                   <p className="text-xs text-content-muted max-w-xs leading-relaxed">
-                    Planetary positions, dashas, yogas, KP timing — ask anything about the birth chart.
+                    {t.chatPage.askAboutDesc}
                   </p>
                 </div>
               </div>
@@ -480,7 +482,7 @@ export default function ChatPage() {
               suggestions={dynamicSuggestions}
             />
             <p className="text-2xs text-content-subtle text-center mt-2">
-              LuckyRay provides Jyotish interpretations for reflection, not predictions or professional advice.
+              {t.chatPage.disclaimer}
             </p>
           </div>
         </div>

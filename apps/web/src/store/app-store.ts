@@ -16,10 +16,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Profile, StoredChart, Conversation, Message, AppSettings } from '@luckyray/shared';
+import type { Language } from '@/lib/i18n';
 
 export type AppMode = 'astrologer' | 'user';
 
 interface AppState {
+  // Language
+  language: Language;
+  setLanguage: (lang: Language) => void;
+
   // App mode — controls what features are visible
   appMode: AppMode;
   setAppMode: (mode: AppMode) => void;
@@ -74,6 +79,9 @@ export interface Toast {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
+  language: 'en' as Language,
+  setLanguage: (lang) => set({ language: lang }),
+
   appMode: 'user' as AppMode,
   setAppMode: (mode) => set({ appMode: mode }),
 
@@ -128,7 +136,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'luckyray-app',
-      partialize: (state) => ({ appMode: state.appMode }),
+      partialize: (state) => ({ appMode: state.appMode, language: state.language }),
     },
   ),
 );

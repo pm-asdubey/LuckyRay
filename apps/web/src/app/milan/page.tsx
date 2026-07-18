@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { ErrorCard } from '@/components/ui/error-card';
 import { useAppStore } from '@/store/app-store';
 import { MilanResult } from '@/components/milan/milan-result';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface ProfileWithChart {
   profile: Profile;
@@ -31,6 +32,7 @@ export default function MilanPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const addToast = useAppStore(s => s.addToast);
+  const t = useTranslation();
 
   useEffect(() => {
     getAllProfiles().then(async (profs) => {
@@ -91,37 +93,37 @@ export default function MilanPage() {
       <div className="flex h-screen">
         <Sidebar />
         <PageLayout className="overflow-hidden">
-          <PageHeader title="Kundli Milan" description="Comprehensive compatibility analysis" />
+          <PageHeader title={t.milan.title} description={t.milan.description} />
           <PageContent className="max-w-3xl mx-auto space-y-6">
             {loading ? (
               <Skeleton lines={4} />
             ) : chartedProfiles.length < 2 ? (
               <EmptyState
                 icon={<Users size={40} />}
-                title="Need two charted profiles"
-                description="Create at least two profiles and generate charts for both to analyze compatibility."
-                action={{ label: 'Create profile', onClick: () => { window.location.href = '/profiles/new'; } }}
+                title={t.milan.noProfiles}
+                description={t.milan.noProfilesDesc}
+                action={{ label: t.profiles.createProfile, onClick: () => { window.location.href = '/profiles/new'; } }}
               />
             ) : (
               <>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <Select
-                    label="Person A"
+                    label={t.milan.personA}
                     value={personA}
                     onChange={(e) => {
                       setPersonA(e.target.value);
                       setResult(null);
                     }}
-                    options={[{ value: '', label: 'Select profile…' }, ...options]}
+                    options={[{ value: '', label: `${t.milan.selectProfile}…` }, ...options]}
                   />
                   <Select
-                    label="Person B"
+                    label={t.milan.personB}
                     value={personB}
                     onChange={(e) => {
                       setPersonB(e.target.value);
                       setResult(null);
                     }}
-                    options={[{ value: '', label: 'Select profile…' }, ...options]}
+                    options={[{ value: '', label: `${t.milan.selectProfile}…` }, ...options]}
                   />
                 </div>
 
@@ -134,7 +136,7 @@ export default function MilanPage() {
                   className="w-full"
                 >
                   <Heart size={16} />
-                  Analyze Match
+                  {analyzing ? t.milan.analyzing : t.milan.analyze}
                 </Button>
 
                 {error && <ErrorCard title="Analysis failed" message={error} />}

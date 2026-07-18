@@ -13,6 +13,7 @@ import { PageLayout, PageHeader, PageContent } from '@/components/layout/page-la
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/app-store';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useTranslation } from '@/hooks/use-translation';
 
 export default function EditProfilePage() {
   const params = useParams<{ id: string }>();
@@ -20,6 +21,7 @@ export default function EditProfilePage() {
   const [profile, setProfile] = useState<Profile | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const { addToast, setActiveProfile } = useAppStore();
+  const t = useTranslation();
 
   useEffect(() => {
     getProfile(params.id)
@@ -73,7 +75,7 @@ export default function EditProfilePage() {
           <Sidebar />
           <PageLayout>
             <PageContent>
-              <p className="text-content-muted">Profile not found.</p>
+              <p className="text-content-muted">{t.chart.profileNotFound}</p>
             </PageContent>
           </PageLayout>
         </div>
@@ -87,11 +89,11 @@ export default function EditProfilePage() {
         <Sidebar />
         <PageLayout>
           <PageHeader
-            title={`Edit — ${profile.name}`}
-            description="Update birth details for this profile"
+            title={`${t.newProfile.editTitle} — ${profile.name}`}
+            description={t.newProfile.editDescription}
             back={
               <Link href={`/chart/${profile.id}`}>
-                <Button variant="icon" size="sm" aria-label="Back">
+                <Button variant="icon" size="sm" aria-label={t.common.back}>
                   <ArrowLeft size={16} />
                 </Button>
               </Link>
@@ -106,7 +108,7 @@ export default function EditProfilePage() {
                 notes: profile.notes,
               }}
               onSubmit={handleSubmit}
-              submitLabel="Save changes"
+              submitLabel={t.form.saveProfile}
             />
           </PageContent>
         </PageLayout>

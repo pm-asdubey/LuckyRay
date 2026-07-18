@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Star, Sparkles, Moon, Sun, ChevronRight } from 'lucide-react';
+import { ArrowRight, Star, Sparkles, Moon, ChevronRight } from 'lucide-react';
 import { getAllProfiles } from '@luckyray/storage';
 import type { Profile } from '@luckyray/shared';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,12 @@ import { Avatar } from '@/components/layout/nav';
 import { AppShell } from '@/components/layout/app-shell';
 import { BottomNav } from '@/components/layout/nav';
 import { formatShortDate } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
 
 export default function HomePage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
+  const t = useTranslation();
 
   useEffect(() => {
     getAllProfiles()
@@ -52,22 +54,21 @@ export default function HomePage() {
                 LuckyRay
               </h1>
               <p className="text-sm text-content-muted leading-relaxed max-w-sm">
-                AI-powered Jyotish companion. Deterministic birth chart calculations
-                combined with thoughtful, evidence-based guidance.
+                {t.home.tagline}
               </p>
             </div>
 
             {profiles.length === 0 ? (
               <Link href="/profiles/new">
                 <Button variant="primary" size="lg">
-                  Create your first profile
+                  {t.home.createFirstProfile}
                   <ArrowRight size={16} />
                 </Button>
               </Link>
             ) : (
               <Link href="/profiles">
                 <Button variant="primary" size="lg">
-                  View profiles
+                  {t.home.viewProfiles}
                   <ArrowRight size={16} />
                 </Button>
               </Link>
@@ -80,13 +81,13 @@ export default function HomePage() {
           <div className="px-6 pb-24 md:pb-8 max-w-2xl mx-auto w-full">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-                Recent profiles
+                {t.home.recentProfiles}
               </h2>
               <Link
                 href="/profiles"
                 className="text-xs text-accent hover:text-accent/80 transition-colors flex items-center gap-1"
               >
-                View all <ChevronRight size={12} />
+                {t.home.viewAll} <ChevronRight size={12} />
               </Link>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -102,18 +103,18 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <FeatureCard
               icon={<Star size={20} />}
-              title="Deterministic Charts"
-              description="Accurate planetary positions using established astronomical calculations."
+              title={t.home.featureChartTitle}
+              description={t.home.featureChartDesc}
             />
             <FeatureCard
               icon={<Sparkles size={20} />}
-              title="AI Insights"
-              description="Evidence-based explanations grounded in your actual chart data."
+              title={t.home.featureAiTitle}
+              description={t.home.featureAiDesc}
             />
             <FeatureCard
               icon={<Moon size={20} />}
-              title="Local First"
-              description="Your profiles and conversations stay on your device. No account needed."
+              title={t.home.featureLocalTitle}
+              description={t.home.featureLocalDesc}
             />
           </div>
         </div>

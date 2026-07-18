@@ -5,6 +5,7 @@ import type { ManglikScoreResult, ManglikPlanetScore } from '@luckyray/jyotish';
 import type { CanonicalChart } from '@luckyray/shared';
 import { SIGN_IDS, SIGN_SANSKRIT } from '@luckyray/shared';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface ManglikViewProps {
   chart: CanonicalChart;
@@ -27,6 +28,7 @@ function formatNum(n: number): string {
 }
 
 export function ManglikView({ chart }: ManglikViewProps) {
+  const t = useTranslation();
   const stored = chart.doshas.find(d => d.id === 'manglik')?.metadata
     ?.manglikScore as ManglikScoreResult | undefined;
 
@@ -48,9 +50,9 @@ export function ManglikView({ chart }: ManglikViewProps) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-surface-border bg-surface-elevated px-4 py-3">
         <div>
-          <h2 className="text-sm font-semibold text-content">Manglik Dosh Weighted Score</h2>
+          <h2 className="text-sm font-semibold text-content">{t.manglik.title}</h2>
           <p className="text-2xs text-content-muted mt-0.5">
-            Deterministic scoring from Lagna, Chandra, and Shukra. No AI judgment.
+            {t.manglik.description}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -63,11 +65,11 @@ export function ManglikView({ chart }: ManglikViewProps) {
                   : 'border-green-900/40 bg-green-950/20 text-green-400',
               )}
             >
-              {dosha.detected ? `Detected — ${dosha.severity ?? 'Moderate'}` : 'Not Detected'}
+              {dosha.detected ? `${t.manglik.detected} — ${dosha.severity ?? 'Moderate'}` : t.manglik.notDetected}
             </span>
           )}
           <div className="text-right">
-            <div className="text-2xs text-content-muted uppercase tracking-wider">Total Score</div>
+            <div className="text-2xs text-content-muted uppercase tracking-wider">{t.manglik.totalScore}</div>
             <div className="text-xl font-bold text-accent leading-none">{formatNum(result.total)}</div>
           </div>
         </div>
@@ -76,7 +78,7 @@ export function ManglikView({ chart }: ManglikViewProps) {
       {/* Inputs */}
       <section>
         <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider mb-3">
-          Inputs (occupied signs)
+          {t.manglik.inputs}
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {[
@@ -106,7 +108,7 @@ export function ManglikView({ chart }: ManglikViewProps) {
           {dosha.evidence.length > 0 && (
             <div className="rounded-lg border border-surface-border bg-surface-elevated px-3 py-2.5">
               <div className="text-2xs font-semibold text-content-muted uppercase tracking-wider mb-1.5">
-                Evidence
+                {t.manglik.evidence}
               </div>
               <ul className="space-y-1">
                 {dosha.evidence.map((e, i) => (
@@ -118,7 +120,7 @@ export function ManglikView({ chart }: ManglikViewProps) {
           {dosha.cancellations.length > 0 && (
             <div className="rounded-lg border border-surface-border bg-surface-elevated px-3 py-2.5">
               <div className="text-2xs font-semibold text-content-muted uppercase tracking-wider mb-1.5">
-                Cancellations / Mitigations
+                {t.manglik.cancellations}
               </div>
               <ul className="space-y-1">
                 {dosha.cancellations.map((c, i) => (
@@ -133,7 +135,7 @@ export function ManglikView({ chart }: ManglikViewProps) {
       {/* Per-planet breakdown */}
       <section className="space-y-4">
         <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-          Full Calculation Trace
+          {t.manglik.breakdown}
         </h3>
         {result.planets.map((planet: ManglikPlanetScore) => (
           <div
@@ -143,21 +145,21 @@ export function ManglikView({ chart }: ManglikViewProps) {
             <div className="flex items-center justify-between px-4 py-2.5 bg-surface-elevated border-b border-surface-border">
               <div className="text-sm font-semibold text-content">{planet.planet}</div>
               <div className="text-2xs text-content-muted">
-                Subtotal: <span className="font-semibold text-content">{formatNum(planet.subtotal)}</span>
+                {t.manglik.subtotal}: <span className="font-semibold text-content">{formatNum(planet.subtotal)}</span>
               </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-2xs">
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-elevated/50">
-                    <th className="text-left px-3 py-2 text-content-muted font-medium">Reference</th>
-                    <th className="text-left px-3 py-2 text-content-muted font-medium">Occupied Sign</th>
-                    <th className="text-left px-3 py-2 text-content-muted font-medium">House</th>
-                    <th className="text-left px-3 py-2 text-content-muted font-medium">House Group</th>
-                    <th className="text-left px-3 py-2 text-content-muted font-medium">Dignity</th>
-                    <th className="text-right px-3 py-2 text-content-muted font-medium">Raw</th>
-                    <th className="text-right px-3 py-2 text-content-muted font-medium">Weight</th>
-                    <th className="text-right px-3 py-2 text-content-muted font-medium">Weighted</th>
+                    <th className="text-left px-3 py-2 text-content-muted font-medium">{t.manglik.reference}</th>
+                    <th className="text-left px-3 py-2 text-content-muted font-medium">{t.manglik.occupiedSign}</th>
+                    <th className="text-left px-3 py-2 text-content-muted font-medium">{t.manglik.house}</th>
+                    <th className="text-left px-3 py-2 text-content-muted font-medium">{t.manglik.houseGroup}</th>
+                    <th className="text-left px-3 py-2 text-content-muted font-medium">{t.manglik.dignity}</th>
+                    <th className="text-right px-3 py-2 text-content-muted font-medium">{t.manglik.raw}</th>
+                    <th className="text-right px-3 py-2 text-content-muted font-medium">{t.manglik.weight}</th>
+                    <th className="text-right px-3 py-2 text-content-muted font-medium">{t.manglik.weighted}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -182,9 +184,7 @@ export function ManglikView({ chart }: ManglikViewProps) {
 
       {/* Score interpretation note */}
       <p className="text-2xs text-content-subtle bg-surface-elevated rounded-lg px-3 py-2 border border-surface-border">
-        Higher totals indicate stronger Manglik indications. The score is computed deterministically
-        from the table in <code className="text-content-muted">packages/jyotish/src/manglik-score.ts</code>.
-        Classical cancellations and the full chart context should always be considered before drawing conclusions.
+        {t.manglik.footerNote}
       </p>
     </div>
   );

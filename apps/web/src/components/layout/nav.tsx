@@ -9,35 +9,37 @@ import {
 import { cn } from '@/lib/utils';
 import { useAppStore, type AppMode } from '@/store/app-store';
 import { LuckyRayLogo } from '@/components/brand/logo';
+import { useTranslation } from '@/hooks/use-translation';
+import type { Language } from '@/lib/i18n';
 
 interface NavItem {
   href: string;
-  label: string;
+  labelKey: keyof ReturnType<typeof useTranslation>['nav'];
   icon: React.ReactNode;
   exact?: boolean;
   modes: AppMode[];
 }
 
-const navItems: NavItem[] = [
-  { href: '/',            label: 'Home',        icon: <Home size={16} />,            exact: true, modes: ['astrologer', 'user'] },
-  { href: '/chart',       label: 'Chart',       icon: <LayoutDashboard size={16} />,              modes: ['astrologer'] },
-  { href: '/gochar',      label: 'Gochar',      icon: <Globe size={16} />,                        modes: ['astrologer'] },
-  { href: '/dasha',       label: 'Dashas',      icon: <CalendarDays size={16} />,                 modes: ['astrologer'] },
-  { href: '/divisional',  label: 'Divisional',  icon: <Layers size={16} />,                       modes: ['astrologer'] },
-  { href: '/matchmaking', label: 'Matchmaking', icon: <Users size={16} />,                        modes: ['astrologer'] },
-  { href: '/milan',       label: 'Milan',       icon: <Heart size={16} />,                        modes: ['astrologer'] },
-  { href: '/reports',     label: 'Reports',     icon: <FileText size={16} />,                     modes: ['astrologer', 'user'] },
-  { href: '/chat',        label: 'Chat',        icon: <MessageCircle size={16} />,                modes: ['astrologer', 'user'] },
-  { href: '/settings',    label: 'Settings',    icon: <Settings size={16} />,                     modes: ['astrologer', 'user'] },
+const navItemDefs: NavItem[] = [
+  { href: '/',            labelKey: 'home',        icon: <Home size={16} />,            exact: true, modes: ['astrologer', 'user'] },
+  { href: '/chart',       labelKey: 'chart',       icon: <LayoutDashboard size={16} />,              modes: ['astrologer'] },
+  { href: '/gochar',      labelKey: 'gochar',      icon: <Globe size={16} />,                        modes: ['astrologer'] },
+  { href: '/dasha',       labelKey: 'dashas',      icon: <CalendarDays size={16} />,                 modes: ['astrologer'] },
+  { href: '/divisional',  labelKey: 'divisional',  icon: <Layers size={16} />,                       modes: ['astrologer'] },
+  { href: '/matchmaking', labelKey: 'matchmaking', icon: <Users size={16} />,                        modes: ['astrologer'] },
+  { href: '/milan',       labelKey: 'milan',       icon: <Heart size={16} />,                        modes: ['astrologer'] },
+  { href: '/reports',     labelKey: 'reports',     icon: <FileText size={16} />,                     modes: ['astrologer', 'user'] },
+  { href: '/chat',        labelKey: 'chat',        icon: <MessageCircle size={16} />,                modes: ['astrologer', 'user'] },
+  { href: '/settings',    labelKey: 'settings',    icon: <Settings size={16} />,                     modes: ['astrologer', 'user'] },
 ];
 
-const mobileItems: NavItem[] = [
-  { href: '/',        label: 'Home',    icon: <Home size={18} />,         exact: true, modes: ['astrologer', 'user'] },
-  { href: '/chart',   label: 'Chart',   icon: <LayoutDashboard size={18} />,            modes: ['astrologer'] },
-  { href: '/milan',   label: 'Milan',   icon: <Heart size={18} />,                      modes: ['astrologer'] },
-  { href: '/reports', label: 'Reports', icon: <FileText size={18} />,                   modes: ['astrologer', 'user'] },
-  { href: '/chat',    label: 'Chat',    icon: <MessageCircle size={18} />,               modes: ['astrologer', 'user'] },
-  { href: '/settings',label: '',        icon: <Settings size={18} />,                   modes: ['astrologer', 'user'] },
+const mobileItemDefs: NavItem[] = [
+  { href: '/',        labelKey: 'home',    icon: <Home size={18} />,         exact: true, modes: ['astrologer', 'user'] },
+  { href: '/chart',   labelKey: 'chart',   icon: <LayoutDashboard size={18} />,            modes: ['astrologer'] },
+  { href: '/milan',   labelKey: 'milan',   icon: <Heart size={18} />,                      modes: ['astrologer'] },
+  { href: '/reports', labelKey: 'reports', icon: <FileText size={18} />,                   modes: ['astrologer', 'user'] },
+  { href: '/chat',    labelKey: 'chat',    icon: <MessageCircle size={18} />,               modes: ['astrologer', 'user'] },
+  { href: '/settings',labelKey: 'settings',icon: <Settings size={18} />,                   modes: ['astrologer', 'user'] },
 ];
 
 function isItemActive(pathname: string, item: NavItem): boolean {
@@ -46,8 +48,34 @@ function isItemActive(pathname: string, item: NavItem): boolean {
   return pathname.startsWith(item.href) && item.href !== '/';
 }
 
+function LanguageToggle() {
+  const { language, setLanguage } = useAppStore();
+
+  return (
+    <div className="flex rounded-md border border-surface-border overflow-hidden">
+      {(['en', 'hi'] as Language[]).map(lang => (
+        <button
+          key={lang}
+          onClick={() => setLanguage(lang)}
+          className={cn(
+            'px-2.5 py-1 text-2xs font-semibold tracking-wide transition-colors',
+            language === lang
+              ? 'bg-accent text-white'
+              : 'text-content-subtle hover:text-content hover:bg-surface-elevated',
+          )}
+          aria-pressed={language === lang}
+          title={lang === 'en' ? 'English' : 'हिंदी'}
+        >
+          {lang === 'en' ? 'EN' : 'हि'}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function ModeToggle() {
   const { appMode, setAppMode } = useAppStore();
+  const t = useTranslation();
   return (
     <div className="px-3 py-2.5 border-b border-surface-border">
       <div className="flex rounded-lg bg-surface-elevated p-0.5">
@@ -60,7 +88,7 @@ function ModeToggle() {
               : 'text-content-subtle hover:text-content-muted',
           )}
         >
-          Personal
+          {t.nav.personal}
         </button>
         <button
           onClick={() => setAppMode('astrologer')}
@@ -71,7 +99,7 @@ function ModeToggle() {
               : 'text-content-subtle hover:text-content-muted',
           )}
         >
-          Astrologer
+          {t.nav.astrologer}
         </button>
       </div>
     </div>
@@ -81,15 +109,17 @@ function ModeToggle() {
 export function Sidebar() {
   const pathname = usePathname();
   const { activeProfile, appMode } = useAppStore();
-  const visibleItems = navItems.filter(item => item.modes.includes(appMode));
+  const t = useTranslation();
+  const visibleItems = navItemDefs.filter(item => item.modes.includes(appMode));
 
   return (
     <nav
       className="hidden md:flex flex-col w-56 shrink-0 border-r border-surface-border bg-surface h-full"
       aria-label="Main navigation"
     >
-      <div className="flex items-center px-4 py-4 border-b border-surface-border">
+      <div className="flex items-center justify-between px-4 py-4 border-b border-surface-border">
         <LuckyRayLogo size={34} showWordmark />
+        <LanguageToggle />
       </div>
 
       <ModeToggle />
@@ -103,7 +133,7 @@ export function Sidebar() {
             <Avatar name={activeProfile.name} size="sm" />
             <div className="min-w-0">
               <div className="text-content font-medium text-xs truncate">{activeProfile.name}</div>
-              <div className="text-content-subtle text-2xs">Active profile</div>
+              <div className="text-content-subtle text-2xs">{t.nav.activeProfile}</div>
             </div>
           </Link>
           <div className="border-t border-surface-border mt-2" />
@@ -126,7 +156,7 @@ export function Sidebar() {
               aria-current={isActive ? 'page' : undefined}
             >
               {item.icon}
-              {item.label}
+              {t.nav[item.labelKey]}
             </Link>
           );
         })}
@@ -134,7 +164,7 @@ export function Sidebar() {
 
       <div className="px-4 py-3 border-t border-surface-border">
         <span className="text-2xs text-content-subtle uppercase tracking-widest">
-          {appMode === 'astrologer' ? 'Astrologer View' : 'Personal View'}
+          {appMode === 'astrologer' ? t.nav.astrologerView : t.nav.personalView}
         </span>
       </div>
     </nav>
@@ -144,7 +174,8 @@ export function Sidebar() {
 export function BottomNav() {
   const pathname = usePathname();
   const { appMode } = useAppStore();
-  const visible = mobileItems.filter(item => item.modes.includes(appMode));
+  const t = useTranslation();
+  const visible = mobileItemDefs.filter(item => item.modes.includes(appMode));
 
   return (
     <nav
@@ -154,6 +185,7 @@ export function BottomNav() {
       <div className="flex items-center justify-around px-2 py-2">
         {visible.map(item => {
           const isActive = isItemActive(pathname, item);
+          const label = t.nav[item.labelKey];
           return (
             <Link
               key={item.href}
@@ -166,7 +198,7 @@ export function BottomNav() {
               aria-current={isActive ? 'page' : undefined}
             >
               {item.icon}
-              {item.label && <span>{item.label}</span>}
+              {label && <span>{label}</span>}
             </Link>
           );
         })}

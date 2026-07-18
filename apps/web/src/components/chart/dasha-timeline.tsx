@@ -7,7 +7,10 @@ import { PLANET_SYMBOLS } from '@luckyray/shared';
 import { formatDashaDuration } from '@luckyray/jyotish';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateNakshatra } from '@/lib/i18n';
 
 interface DashaTimelineProps {
   dashas: DashaData;
@@ -16,8 +19,14 @@ interface DashaTimelineProps {
 
 export function DashaTimeline({ dashas, profileId }: DashaTimelineProps) {
   const [expanded, setExpanded] = useState<string | null>(dashas.currentMahadasha.planet);
-
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
+  const d = t.chart.dasha;
   const now = new Date();
+
+  const currentPlanet = translatePlanet(dashas.currentMahadasha.planet, language);
+  const birthNakshatra = translateNakshatra(dashas.birthNakshatra, language);
+  const birthNakshatraLord = translatePlanet(dashas.birthNakshatraLord, language);
 
   return (
     <div className="space-y-3">
@@ -29,32 +38,32 @@ export function DashaTimeline({ dashas, profileId }: DashaTimelineProps) {
           </span>
           <div className="flex-1">
             <div className="text-xs text-accent font-medium uppercase tracking-wider">
-              Current Mahadasha
+              {d.currentMahadasha}
             </div>
             <div className="text-sm font-semibold text-content">
-              {dashas.currentMahadasha.planet}
+              {currentPlanet}
             </div>
           </div>
           {profileId && (
             <Link href={`/dasha/${profileId}`} className="text-2xs text-accent hover:underline flex items-center gap-1">
-              Full view <ExternalLink size={10} />
+              {d.fullView} <ExternalLink size={10} />
             </Link>
           )}
         </div>
         {dashas.currentAntardasha && (
           <div className="text-xs text-content-muted">
-            Antardasha: <span className="text-content font-medium">{dashas.currentAntardasha.planet}</span>
-            {' '}· until {formatDate(dashas.currentAntardasha.endDate)}
+            {d.antardasha}: <span className="text-content font-medium">{translatePlanet(dashas.currentAntardasha.planet, language)}</span>
+            {' '}· {d.until} {formatDate(dashas.currentAntardasha.endDate)}
           </div>
         )}
         {dashas.currentPratyantar && (
           <div className="text-xs text-content-muted">
-            Pratyantar: <span className="text-content font-medium">{dashas.currentPratyantar.planet}</span>
-            {' '}· until {formatDate(dashas.currentPratyantar.endDate)}
+            {d.pratyantar}: <span className="text-content font-medium">{translatePlanet(dashas.currentPratyantar.planet, language)}</span>
+            {' '}· {d.until} {formatDate(dashas.currentPratyantar.endDate)}
           </div>
         )}
         <div className="text-2xs text-content-subtle">
-          Moon in {dashas.birthNakshatra} at birth · Nakshatra lord: {dashas.birthNakshatraLord}
+          {d.moonIn} {birthNakshatra} {d.atBirth} · {d.nakshatraLord}: {birthNakshatraLord}
         </div>
       </div>
 
@@ -82,19 +91,15 @@ export function DashaTimeline({ dashas, profileId }: DashaTimelineProps) {
 }
 
 function DashaPeriodRow({
-  period,
-  isCurrent,
-  isPast,
-  isExpanded,
-  onToggle,
+  period, isCurrent, isPast, isExpanded, onToggle,
 }: {
-  period: DashaPeriod;
-  isCurrent: boolean;
-  isPast: boolean;
-  isExpanded: boolean;
-  onToggle: () => void;
+  period: DashaPeriod; isCurrent: boolean; isPast: boolean; isExpanded: boolean; onToggle: () => void;
 }) {
   const now = new Date();
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
+  const d = t.chart.dasha;
+  const planetName = translatePlanet(period.planet, language);
 
   return (
     <div className={cn(
@@ -115,9 +120,9 @@ function DashaPeriodRow({
               'text-sm font-semibold',
               isCurrent ? 'text-accent' : isPast ? 'text-content-subtle' : 'text-content',
             )}>
-              {period.planet}
+              {planetName}
             </span>
-            {isCurrent && <Badge variant="accent">Current</Badge>}
+            {isCurrent && <Badge variant="accent">{d.current}</Badge>}
           </div>
           <div className="text-2xs text-content-muted mt-0.5">
             {formatDate(period.startDate)} — {formatDate(period.endDate)} · {formatDashaDuration(period.durationYears)}
@@ -156,13 +161,13 @@ function DashaPeriodRow({
                       'text-xs font-medium',
                       isAntiCurrent ? 'text-accent' : 'text-content-muted',
                     )}>
-                      {anti.planet}
+                      {translatePlanet(anti.planet, language)}
                     </span>
                     <span className="text-2xs text-content-subtle ml-2">
                       {formatDate(anti.startDate)} — {formatDate(anti.endDate)}
                     </span>
                   </div>
-                  {isAntiCurrent && <Badge variant="accent">Now</Badge>}
+                  {isAntiCurrent && <Badge variant="accent">{d.now}</Badge>}
                 </div>
               );
             })}

@@ -16,6 +16,9 @@ import { Badge } from '@/components/ui/badge';
 import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateNakshatra } from '@/lib/i18n';
 
 export default function DashaPage() {
   const params = useParams<{ profileId: string }>();
@@ -23,6 +26,8 @@ export default function DashaPage() {
   const [storedChart, setStoredChart] = useState<StoredChart | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +72,7 @@ export default function DashaPage() {
           <Sidebar />
           <PageLayout>
             <PageContent>
-              <ErrorCard title="Profile not found" message="This profile may have been deleted." onRetry={load} />
+              <ErrorCard title={t.chart.profileNotFound} message={t.chart.profileDeleted} onRetry={load} />
             </PageContent>
           </PageLayout>
         </div>
@@ -83,11 +88,11 @@ export default function DashaPage() {
         <Sidebar />
         <PageLayout className="overflow-hidden">
           <PageHeader
-            title="Vimshottari Dasha"
+            title={t.dasha.title}
             description={profile.name}
             back={
               <Link href={`/chart/${profile.id}`}>
-                <Button variant="icon" size="sm" aria-label="Back to chart">
+                <Button variant="icon" size="sm" aria-label={t.common.back}>
                   <ArrowLeft size={16} />
                 </Button>
               </Link>
@@ -97,13 +102,13 @@ export default function DashaPage() {
                 <Link href={`/chat/${profile.id}`}>
                   <Button variant="ghost" size="sm">
                     <MessageCircle size={14} />
-                    <span className="hidden sm:inline">Chat</span>
+                    <span className="hidden sm:inline">{t.chart.chat}</span>
                   </Button>
                 </Link>
                 <Link href={`/reports/${profile.id}`}>
                   <Button variant="secondary" size="sm">
                     <FileText size={14} />
-                    <span className="hidden sm:inline">Reports</span>
+                    <span className="hidden sm:inline">{t.chart.reports}</span>
                   </Button>
                 </Link>
               </div>
@@ -113,9 +118,9 @@ export default function DashaPage() {
           {!chart ? (
             <PageContent>
               <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-                <p className="text-content-muted text-sm">No chart generated yet.</p>
+                <p className="text-content-muted text-sm">{t.dasha.noChart}</p>
                 <Link href={`/chart/${profile.id}`}>
-                  <Button variant="primary">Generate Chart First</Button>
+                  <Button variant="primary">{t.dasha.goToChart}</Button>
                 </Link>
               </div>
             </PageContent>
@@ -139,6 +144,9 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
     dashas.currentAntardasha ? `${dashas.currentMahadasha.planet}-${dashas.currentAntardasha.planet}` : null,
   );
   const now = new Date();
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
+  const d = t.chart.dasha;
 
   return (
     <div className="space-y-4">
@@ -149,12 +157,12 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
       <div className="text-xs text-content-muted rounded-lg border border-surface-border bg-surface-elevated px-4 py-3 space-y-1">
         <p>
           <span className="text-content font-medium">Vimshottari Dasha</span> — 120-year cycle of planetary periods.
-          Moon in <span className="text-content">{dashas.birthNakshatra}</span> nakshatra at birth
-          (lord: <span className="text-content">{dashas.birthNakshatraLord}</span>).
+          {' '}{d.moonIn} <span className="text-content">{translateNakshatra(dashas.birthNakshatra, language)}</span> {d.atBirth}
+          {' '}({d.nakshatraLord}: <span className="text-content">{translatePlanet(dashas.birthNakshatraLord, language)}</span>).
         </p>
-        <p>Three levels: <span className="text-content">Mahadasha</span> (major period) →{' '}
-          <span className="text-content">Antardasha</span> (sub-period) →{' '}
-          <span className="text-content">Pratyantar</span> (sub-sub-period). Expand each row to drill down.
+        <p>Three levels: <span className="text-content">Mahadasha</span> →{' '}
+          <span className="text-content">Antardasha</span> →{' '}
+          <span className="text-content">Pratyantar</span>.
         </p>
       </div>
 
@@ -188,9 +196,9 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
                       'text-sm font-semibold',
                       isMahaCurrent ? 'text-accent' : isMahaPast ? 'text-content-subtle' : 'text-content',
                     )}>
-                      {maha.planet} Mahadasha
+                      {translatePlanet(maha.planet, language)} Mahadasha
                     </span>
-                    {isMahaCurrent && <Badge variant="accent">Active</Badge>}
+                    {isMahaCurrent && <Badge variant="accent">{d.current}</Badge>}
                     {isMahaPast && <Badge variant="default">Completed</Badge>}
                   </div>
                   <div className="text-2xs text-content-muted mt-0.5 space-x-2">
@@ -244,9 +252,9 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
                                 'text-xs font-medium',
                                 isAntiCurrent ? 'text-accent' : isAntiPast ? 'text-content-subtle' : 'text-content',
                               )}>
-                                {anti.planet} Antardasha
+                                {translatePlanet(anti.planet, language)} {d.antardasha}
                               </span>
-                              {isAntiCurrent && <Badge variant="accent">Now</Badge>}
+                              {isAntiCurrent && <Badge variant="accent">{d.now}</Badge>}
                             </div>
                             <div className="text-2xs text-content-muted">
                               {formatDate(anti.startDate)} → {formatDate(anti.endDate)} · {formatDashaDuration(anti.durationYears)}
@@ -293,9 +301,9 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
                                         'text-2xs font-medium',
                                         isPratCurrent ? 'text-accent' : isPratPast ? 'text-content-subtle' : 'text-content-muted',
                                       )}>
-                                        {prat.planet} Pratyantar
+                                        {translatePlanet(prat.planet, language)} {d.pratyantar}
                                       </span>
-                                      {isPratCurrent && <Badge variant="accent">Active Now</Badge>}
+                                      {isPratCurrent && <Badge variant="accent">{d.current}</Badge>}
                                     </div>
                                     <div className="text-2xs text-content-subtle">
                                       {formatDate(prat.startDate)} → {formatDate(prat.endDate)} · {formatDashaDuration(prat.durationYears)}
@@ -333,10 +341,13 @@ function CurrentDashaSummary({ dashas }: { dashas: DashaData }) {
   const mahaProgress = Math.min(100, Math.max(0,
     ((now.getTime() - mahaStart.getTime()) / (mahaEnd.getTime() - mahaStart.getTime())) * 100,
   ));
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
+  const d = t.chart.dasha;
 
   return (
     <div className="rounded-xl border border-accent-muted bg-accent-subtle/30 p-4 space-y-3">
-      <div className="text-xs font-semibold text-accent uppercase tracking-wider">Current Dasha Period</div>
+      <div className="text-xs font-semibold text-accent uppercase tracking-wider">{t.dasha.currentPeriod}</div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <DashaLevel
@@ -347,7 +358,7 @@ function CurrentDashaSummary({ dashas }: { dashas: DashaData }) {
         />
         {dashas.currentAntardasha && (
           <DashaLevel
-            label="Antardasha"
+            label={d.antardasha}
             planet={dashas.currentAntardasha.planet}
             endsAt={dashas.currentAntardasha.endDate}
             level={2}
@@ -355,7 +366,7 @@ function CurrentDashaSummary({ dashas }: { dashas: DashaData }) {
         )}
         {dashas.currentPratyantar && (
           <DashaLevel
-            label="Pratyantar"
+            label={d.pratyantar}
             planet={dashas.currentPratyantar.planet}
             endsAt={dashas.currentPratyantar.endDate}
             level={3}
@@ -386,14 +397,17 @@ function DashaLevel({ label, planet, endsAt, level }: {
   endsAt: string;
   level: number;
 }) {
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
+  const d = t.chart.dasha;
   return (
     <div className="space-y-1">
       <div className="text-2xs text-content-muted">{label}</div>
       <div className="flex items-center gap-2">
         <span className="text-lg" aria-hidden="true">{PLANET_SYMBOLS[planet as keyof typeof PLANET_SYMBOLS] ?? ''}</span>
-        <span className="text-sm font-semibold text-content">{planet}</span>
+        <span className="text-sm font-semibold text-content">{translatePlanet(planet, language)}</span>
       </div>
-      <div className="text-2xs text-content-subtle">until {formatDate(endsAt)}</div>
+      <div className="text-2xs text-content-subtle">{d.until} {formatDate(endsAt)}</div>
     </div>
   );
 }

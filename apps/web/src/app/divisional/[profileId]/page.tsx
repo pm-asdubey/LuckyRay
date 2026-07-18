@@ -16,6 +16,9 @@ import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { getNorthIndianHouseGeometry, SIGN_ABBREVIATIONS } from '@/lib/chart-geometry';
+import { useTranslation } from '@/hooks/use-translation';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateSign } from '@/lib/i18n';
 
 export default function DivisionalPage() {
   const params = useParams<{ profileId: string }>();
@@ -24,6 +27,9 @@ export default function DivisionalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeDiv, setActiveDiv] = useState<'D9' | 'D10'>('D9');
+
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,11 +91,11 @@ export default function DivisionalPage() {
         <Sidebar />
         <PageLayout className="overflow-hidden">
           <PageHeader
-            title="Divisional Charts"
+            title={t.divisional.title}
             description={profile.name}
             back={
               <Link href={`/chart/${profile.id}`}>
-                <Button variant="icon" size="sm" aria-label="Back to chart">
+                <Button variant="icon" size="sm" aria-label={t.common.back}>
                   <ArrowLeft size={16} />
                 </Button>
               </Link>
@@ -100,9 +106,9 @@ export default function DivisionalPage() {
             <PageContent className="max-w-3xl space-y-5">
               {!chart ? (
                 <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-                  <p className="text-content-muted text-sm">No chart generated yet.</p>
+                  <p className="text-content-muted text-sm">{t.divisional.noChart}</p>
                   <Link href={`/chart/${profile.id}`}>
-                    <Button variant="primary">Generate Chart First</Button>
+                    <Button variant="primary">{t.divisional.generateChartFirst}</Button>
                   </Link>
                 </div>
               ) : (
@@ -130,13 +136,13 @@ export default function DivisionalPage() {
                       {/* Description */}
                       <div className="rounded-xl border border-surface-border bg-surface-elevated px-4 py-3 text-xs text-content-muted space-y-1">
                         <p className="font-semibold text-content">
-                          {div.name} · Ascendant: {div.ascendant}
+                          {div.name} · {t.divisional.ascendant}: {translateSign(div.ascendant, language)}
                         </p>
                         {activeDiv === 'D9' && (
-                          <p>The Navamsha chart reveals the inner strength of the soul, marriage prospects, and spiritual path. It amplifies or weakens the promise of the natal chart.</p>
+                          <p>{t.divisional.navamshaDesc}</p>
                         )}
                         {activeDiv === 'D10' && (
-                          <p>The Dashamsha chart (D10) is the primary chart for career, profession, and achievements in the outer world. Strong D10 planets indicate professional success.</p>
+                          <p>{t.divisional.dashamshaDec}</p>
                         )}
                       </div>
 
@@ -146,7 +152,7 @@ export default function DivisionalPage() {
                       {/* Planet table */}
                       <div className="space-y-2">
                         <div className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-                          Planet Positions in {div.name}
+                          {t.divisional.planetPositions(div.name)}
                         </div>
                         <div className="grid gap-2">
                           {div.planets.map(p => {
@@ -161,19 +167,19 @@ export default function DivisionalPage() {
                                   {PLANET_SYMBOLS[p.id as keyof typeof PLANET_SYMBOLS] ?? ''}
                                 </span>
                                 <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-semibold text-content">{p.id}</div>
+                                  <div className="text-sm font-semibold text-content">{translatePlanet(p.id, language)}</div>
                                   {natalPlanet && (
                                     <div className="text-2xs text-content-subtle">
-                                      Natal: {natalPlanet.sign} H{natalPlanet.house}
+                                      {t.divisional.natal}: {translateSign(natalPlanet.sign, language)} H{natalPlanet.house}
                                     </div>
                                   )}
                                 </div>
                                 <div className="text-right">
-                                  <div className="text-sm font-medium text-content">{p.sign}</div>
-                                  <div className="text-2xs text-content-muted">House {p.house}</div>
+                                  <div className="text-sm font-medium text-content">{translateSign(p.sign, language)}</div>
+                                  <div className="text-2xs text-content-muted">{t.divisional.house} {p.house}</div>
                                 </div>
                                 {changedSign && (
-                                  <Badge variant="accent">Shifted</Badge>
+                                  <Badge variant="accent">{t.divisional.shifted}</Badge>
                                 )}
                               </div>
                             );

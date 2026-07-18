@@ -5,34 +5,35 @@ import type { YogaData } from '@luckyray/shared';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ChevronDown, CheckCircle, Circle } from 'lucide-react';
+import { useTranslation } from '@/hooks/use-translation';
 
 interface YogaListProps {
   yogas: YogaData[];
 }
 
 export function YogaList({ yogas }: YogaListProps) {
+  const t = useTranslation();
   const detected = yogas.filter(y => y.detected);
-  const undetected = yogas.filter(y => !y.detected);
 
   return (
     <div className="space-y-2">
       {detected.length > 0 && (
         <div className="space-y-2">
           {detected.map(yoga => (
-            <YogaCard key={yoga.id} yoga={yoga} />
+            <YogaCard key={yoga.id} yoga={yoga} t={t} />
           ))}
         </div>
       )}
       {detected.length === 0 && (
         <div className="text-xs text-content-muted text-center py-6">
-          No classical yogas detected in this chart.
+          {t.yogas.noYogas}
         </div>
       )}
     </div>
   );
 }
 
-function YogaCard({ yoga }: { yoga: YogaData }) {
+function YogaCard({ yoga, t }: { yoga: YogaData; t: ReturnType<typeof import('@/hooks/use-translation').useTranslation> }) {
   const [expanded, setExpanded] = useState(false);
 
   const strengthBadge = yoga.strength === 'Strong'
@@ -93,7 +94,7 @@ function YogaCard({ yoga }: { yoga: YogaData }) {
           {yoga.evidence.length > 0 && (
             <div>
               <div className="text-2xs font-semibold text-content-subtle uppercase tracking-wider mb-1.5">
-                Chart evidence
+                {t.yogas.chartEvidence}
               </div>
               <ul className="space-y-1">
                 {yoga.evidence.map((e, i) => (
@@ -107,7 +108,7 @@ function YogaCard({ yoga }: { yoga: YogaData }) {
           )}
           {yoga.reference && (
             <div className="text-2xs text-content-subtle italic">
-              Source: {yoga.reference}
+              {t.yogas.source}: {yoga.reference}
             </div>
           )}
         </div>

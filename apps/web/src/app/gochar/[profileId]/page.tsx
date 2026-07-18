@@ -17,6 +17,9 @@ import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { useTranslation } from '@/hooks/use-translation';
+import { useAppStore } from '@/store/app-store';
+import { translatePlanet, translateSign, translateNakshatra } from '@/lib/i18n';
 
 type ReferenceMode = 'lagna' | 'chandra';
 
@@ -41,6 +44,8 @@ export default function GocharPage() {
   const [gochar, setGochar] = useState<GocharData | null>(null);
   const [mode, setMode] = useState<ReferenceMode>('lagna');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]!);
+  const t = useTranslation();
+  const language = useAppStore(s => s.language);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,11 +123,11 @@ export default function GocharPage() {
         <Sidebar />
         <PageLayout className="overflow-hidden">
           <PageHeader
-            title="Gochar"
-            description={`Transits · ${profile.name}`}
+            title={t.gochar.title}
+            description={`${t.gochar.transits} · ${profile.name}`}
             back={
               <Link href={`/chart/${profile.id}`}>
-                <Button variant="icon" size="sm" aria-label="Back to chart">
+                <Button variant="icon" size="sm" aria-label={t.common.back}>
                   <ArrowLeft size={16} />
                 </Button>
               </Link>
@@ -134,7 +139,7 @@ export default function GocharPage() {
                 onClick={() => setDate(new Date().toISOString().split('T')[0]!)}
               >
                 <RefreshCw size={14} />
-                Today
+                {t.gochar.today}
               </Button>
             }
           />
@@ -143,9 +148,9 @@ export default function GocharPage() {
             <PageContent className="max-w-3xl space-y-5">
               {!chart ? (
                 <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
-                  <p className="text-content-muted text-sm">No chart generated yet.</p>
+                  <p className="text-content-muted text-sm">{t.gochar.noChart}</p>
                   <Link href={`/chart/${profile.id}`}>
-                    <Button variant="primary">Generate Chart First</Button>
+                    <Button variant="primary">{t.gochar.generateChartFirst}</Button>
                   </Link>
                 </div>
               ) : (
@@ -164,7 +169,7 @@ export default function GocharPage() {
                         )}
                       >
                         <Globe size={12} className="inline mr-1.5" />
-                        From Lagna
+                        {t.gochar.fromLagna}
                       </button>
                       <button
                         onClick={() => setMode('chandra')}
@@ -175,7 +180,7 @@ export default function GocharPage() {
                             : 'text-content-muted hover:text-content',
                         )}
                       >
-                        ☽ From Chandra
+                        ☽ {t.gochar.fromChandra}
                       </button>
                     </div>
 
@@ -192,10 +197,10 @@ export default function GocharPage() {
                   {/* Sade Sati alert */}
                   {sadeSati?.active && (
                     <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm">
-                      <span className="font-semibold text-amber-400">Sade Sati Active</span>
+                      <span className="font-semibold text-amber-400">{t.gochar.sadeSatiActive}</span>
                       <span className="text-content-muted ml-2">— {sadeSati.description}</span>
                       <p className="text-xs text-content-muted mt-1">
-                        Saturn is transiting in a challenging position relative to your natal Moon.
+                        {t.gochar.sadeSatiDesc}
                       </p>
                     </div>
                   )}
@@ -204,7 +209,7 @@ export default function GocharPage() {
                   {gochar && (
                     <div className="space-y-2">
                       <div className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-                        Planetary Transits · {mode === 'lagna' ? 'From Ascendant' : 'From Natal Moon'} · {new Date(date + 'T12:00:00Z').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        {t.gochar.planetaryTransits} · {mode === 'lagna' ? t.gochar.fromAscendant : t.gochar.fromNatalMoon} · {new Date(date + 'T12:00:00Z').toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' })}
                       </div>
 
                       <div className="grid gap-2">
@@ -220,6 +225,8 @@ export default function GocharPage() {
                               natalPlanet={natalPlanet}
                               colorClass={colorClass}
                               sameSign={sameSign}
+                              t={t}
+                              language={language}
                             />
                           );
                         })}
@@ -231,17 +238,17 @@ export default function GocharPage() {
                   {chart && (
                     <div className="rounded-xl border border-surface-border bg-surface-elevated px-4 py-3 space-y-2">
                       <div className="text-xs font-semibold text-content-muted uppercase tracking-wider">
-                        Natal Reference
+                        {t.gochar.natalReference}
                       </div>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-1">
                         <div className="text-xs text-content-muted">
-                          <span className="text-content-subtle">Lagna:</span>{' '}
-                          <span className="text-content">{chart.ascendant.sign}</span>
+                          <span className="text-content-subtle">{t.chart.lagnaLabel}:</span>{' '}
+                          <span className="text-content">{translateSign(chart.ascendant.sign, language)}</span>
                         </div>
                         {chart.planets.map(p => (
                           <div key={p.id} className="text-xs text-content-muted">
-                            <span className="text-content-subtle">{p.id}:</span>{' '}
-                            <span className="text-content">{p.sign} H{p.house}</span>
+                            <span className="text-content-subtle">{translatePlanet(p.id, language)}:</span>{' '}
+                            <span className="text-content">{translateSign(p.sign, language)} H{p.house}</span>
                             {p.isRetrograde && <span className="text-violet-400 ml-1">℞</span>}
                           </div>
                         ))}
@@ -260,15 +267,16 @@ export default function GocharPage() {
 }
 
 function GocharRow({
-  planet, natalPlanet, colorClass, sameSign,
+  planet, natalPlanet, colorClass, sameSign, t, language,
 }: {
   planet: GocharPlanet;
   natalPlanet?: { sign: string; house: number; signIndex: number } | null;
   colorClass: string;
   sameSign: boolean;
+  t: ReturnType<typeof import('@/hooks/use-translation').useTranslation>;
+  language: 'en' | 'hi';
 }) {
   const symbol = PLANET_SYMBOLS[planet.id as keyof typeof PLANET_SYMBOLS] ?? '';
-  const signAbbr = planet.sign.slice(0, 3);
   const isSpecial = planet.natalHouse === 1 || planet.natalHouse === 4 ||
     planet.natalHouse === 7 || planet.natalHouse === 10;
 
@@ -283,9 +291,9 @@ function GocharRow({
       <div className="flex items-center gap-2 w-28 shrink-0">
         <span className={cn('text-lg', colorClass)} aria-hidden="true">{symbol}</span>
         <div>
-          <div className={cn('text-sm font-semibold', colorClass)}>{planet.id}</div>
+          <div className={cn('text-sm font-semibold', colorClass)}>{translatePlanet(planet.id, language)}</div>
           {planet.isRetrograde && (
-            <div className="text-2xs text-violet-400">Retrograde</div>
+            <div className="text-2xs text-violet-400">{t.gochar.retrograde}</div>
           )}
         </div>
       </div>
@@ -293,16 +301,16 @@ function GocharRow({
       {/* Current transit sign + house */}
       <div className="flex-1 min-w-0">
         <div className="text-sm text-content font-medium">
-          {planet.sign} {planet.degree}°
+          {translateSign(planet.sign, language)} {planet.degree}°
         </div>
-        <div className="text-2xs text-content-muted">{planet.nakshatra}</div>
+        <div className="text-2xs text-content-muted">{translateNakshatra(planet.nakshatra, language)}</div>
       </div>
 
       {/* Transit house arrow */}
       <div className="flex items-center gap-2 text-xs">
         {natalPlanet && (
           <span className="text-content-subtle">
-            Natal H{natalPlanet.house}
+            {t.gochar.natalHouse(natalPlanet.house)}
           </span>
         )}
         <span className="text-content-subtle">→</span>
@@ -310,14 +318,14 @@ function GocharRow({
           'font-semibold',
           isSpecial ? 'text-accent' : 'text-content',
         )}>
-          Transit H{planet.natalHouse}
+          {t.gochar.transitHouse(planet.natalHouse)}
         </span>
       </div>
 
       {/* Special badge */}
-      {sameSign && <Badge variant="gold">Return</Badge>}
+      {sameSign && <Badge variant="gold">{t.gochar.returnLabel}</Badge>}
       {isSpecial && !sameSign && (
-        <Badge variant="accent">Kendra</Badge>
+        <Badge variant="accent">{t.gochar.kendraLabel}</Badge>
       )}
     </div>
   );
