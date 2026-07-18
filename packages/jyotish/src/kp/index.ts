@@ -13,17 +13,14 @@
  */
 
 import type {
-  PlanetId, SignId, NakshatraName,
-  KPData, KPCusp, KPPlanetInfo, KPTopicId,
-  BirthDetails,
+  PlanetId, SignId,
+  KPData, KPCusp, KPPlanetInfo,
 } from '@luckyray/shared';
-import type { DashaData } from '@luckyray/shared';
 import { NAKSHATRA_NAMES, NAKSHATRA_DEGREES } from '@luckyray/shared';
 import { computePlacidusLongitudes } from './cusps';
-import { getKPLordship, getNakshatraLord } from './sublords';
+import { getKPLordship } from './sublords';
 import { computeKPSignificators } from './significators';
 import type { PlanetWithHouse } from './significators';
-import { analyzeKPEvent } from './predictor';
 
 // ─── Sign utilities ───────────────────────────────────────────────────────
 
@@ -65,12 +62,11 @@ interface KPInput {
     planet: PlanetId;
     siderealLongitude: number;
   }>;
-  dashas: DashaData;
   birthDate: string; // YYYY-MM-DD (local)
 }
 
 export function computeKP(input: KPInput): KPData {
-  const { ascendantTropical, ramc, obliquityDeg, ayanamsa, latitude, planets, dashas, birthDate } = input;
+  const { ascendantTropical, ramc, obliquityDeg, ayanamsa, latitude, planets, birthDate } = input;
 
   // 1. Compute Placidus cusps (tropical longitudes)
   const tropicalCusps = computePlacidusLongitudes(ramc, ascendantTropical, obliquityDeg, latitude);
@@ -139,12 +135,7 @@ export function computeKP(input: KPInput): KPData {
   // 7. House significators
   const significators = computeKPSignificators(planetsWithHouses, cuspSignLords);
 
-  // 8. Event analysis
-  const cuspSubLords = kpCusps.map(c => c.subLord);
-  const TOPICS: KPTopicId[] = ['career', 'marriage', 'wealth', 'health', 'children', 'foreign'];
-  const events = TOPICS.map(topic => analyzeKPEvent(topic, cuspSubLords, significators, dashas));
-
-  // 9. Ruling planets (at time of birth)
+  // 8. Ruling planets (at time of birth)
   const ascSidereal = siderealCusps[0]!;
   const moonPlanet = planets.find(p => p.planet === 'Moon');
   const moonLon = moonPlanet?.siderealLongitude ?? 0;
@@ -165,7 +156,6 @@ export function computeKP(input: KPInput): KPData {
     cusps: kpCusps,
     planets: kpPlanets,
     significators,
-    events,
     rulingPlanets: {
       ascStarLord: ascLords.nakshatraLord,
       ascSubLord: ascLords.subLord,

@@ -95,7 +95,6 @@ describe('KP chart generation', () => {
     expect(kp.cusps).toHaveLength(12);
     expect(kp.planets).toHaveLength(9);
     expect(kp.significators).toHaveLength(12);
-    expect(kp.events).toHaveLength(6);
   });
 
   it('assigns each planet to a valid Placidus house', () => {

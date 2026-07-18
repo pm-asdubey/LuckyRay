@@ -209,8 +209,6 @@ export interface DivisionalChart {
 
 // ─── KP (Krishnamurti Paddhati) Types ────────────────────────────────────────
 
-export type KPTopicId = 'career' | 'marriage' | 'wealth' | 'health' | 'children' | 'foreign';
-
 export interface KPCusp {
   house: number;
   longitude: number;       // sidereal, 0-360
@@ -241,38 +239,10 @@ export interface KPHouseSignificators {
   significators: PlanetId[];  // union of all 4 levels, deduped
 }
 
-export interface KPPredictedPeriod {
-  mahadasha: PlanetId;
-  antardasha: PlanetId;
-  pratyantar?: PlanetId;
-  startDate: string;
-  endDate: string;
-  confidence: 'high' | 'medium' | 'low';
-  reason: string;
-}
-
-export interface KPEventAnalysis {
-  topic: KPTopicId;
-  relevantHouses: number[];
-  primaryHouse: number;
-  primaryCuspSubLord: PlanetId;
-  // All houses the sub-lord signifies (flat, any level)
-  sublordSignifies: number[];
-  // Same data but with level info for each house
-  sublordSignifiesWithLevel: { house: number; level: 1 | 2 | 3 | 4 }[];
-  isPromised: boolean;
-  // strong = Level 1/2 hits; moderate = Level 3/4 only; weak = partial
-  promiseStrength: 'strong' | 'moderate' | 'weak';
-  promiseReason: string;
-  significators: PlanetId[];
-  predictedPeriods: KPPredictedPeriod[];
-}
-
 export interface KPData {
   cusps: KPCusp[];
   planets: KPPlanetInfo[];
   significators: KPHouseSignificators[];
-  events: KPEventAnalysis[];
   rulingPlanets: {
     ascStarLord: PlanetId;
     ascSubLord: PlanetId;

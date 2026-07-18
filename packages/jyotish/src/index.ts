@@ -121,7 +121,7 @@ export function generateChart(input: ChartGenerationInput): ChartResult {
     const D9 = computeNavamsa(planets, ascendantSidereal);
     const D10 = computeDashamsa(planets, ascendantSidereal);
 
-    // KP (Krishnamurti Paddhati) analysis — Placidus cusps + sublord predictions
+    // KP (Krishnamurti Paddhati) calculation — Placidus cusps, sub-lords, significators, ruling planets
     const kp = computeKP({
       ascendantTropical,
       ramc: astronomy.ramc,
@@ -129,7 +129,6 @@ export function generateChart(input: ChartGenerationInput): ChartResult {
       ayanamsa: astronomyData.ayanamsa,
       latitude: birthDetails.latitude,
       planets: planets.map(p => ({ planet: p.id, siderealLongitude: p.siderealLongitude })),
-      dashas,
       birthDate: birthDetails.date,
     });
 

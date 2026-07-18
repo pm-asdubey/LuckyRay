@@ -358,18 +358,6 @@ export default function ChartPage() {
 
 // ─── KP View ─────────────────────────────────────────────────────────────────
 
-const PROMISE_COLORS = {
-  strong:   'text-green-400 border-green-900/40 bg-green-950/20',
-  moderate: 'text-amber-400 border-amber-900/40 bg-amber-950/20',
-  weak:     'text-red-400 border-red-900/40 bg-red-950/20',
-};
-
-const CONFIDENCE_COLORS = {
-  high:   'bg-green-900/30 text-green-400 border border-green-800/30',
-  medium: 'bg-amber-900/30 text-amber-400 border border-amber-800/30',
-  low:    'bg-surface-elevated text-content-muted border border-surface-border',
-};
-
 const LEVEL_COLORS = [
   'text-violet-400',   // L1
   'text-blue-400',     // L2
@@ -377,17 +365,7 @@ const LEVEL_COLORS = [
   'text-slate-400',    // L4
 ];
 
-const TOPIC_LABELS: Record<string, string> = {
-  career:   'Career & Profession',
-  marriage: 'Love & Marriage',
-  wealth:   'Wealth & Finance',
-  health:   'Health & Vitality',
-  children: 'Children',
-  foreign:  'Foreign / Travel',
-};
-
 function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefined }) {
-  const [openTopic, setOpenTopic] = useState<string | null>('career');
   const [sigView, setSigView] = useState<'by-house' | 'by-planet'>('by-house');
 
   if (!kp) {
@@ -575,117 +553,6 @@ function KPView({ kp }: { kp: import('@luckyray/shared').KPData | null | undefin
         </div>
       </section>
 
-      {/* Event Promise & Periods */}
-      <section>
-        <h3 className="text-xs font-semibold text-content-muted uppercase tracking-wider mb-3">
-          Event Promise Analysis
-        </h3>
-        <p className="text-2xs text-content-subtle mb-3">
-          Promise is determined by whether the sub lord of the primary cusp signifies the
-          relevant houses through Level 1/2 (strong) or Level 3/4 (moderate).
-          Periods are computed deterministically — no AI required.
-        </p>
-        <div className="space-y-2">
-          {kp.events.map(ev => {
-            const strength: 'strong' | 'moderate' | 'weak' = ev.isPromised
-              ? (ev.promiseStrength ?? 'moderate')
-              : 'weak';
-            const promiseLabel = ev.isPromised
-              ? (ev.promiseStrength === 'strong' ? 'STRONG' : 'MODERATE')
-              : 'NOT PROMISED';
-            return (
-              <div key={ev.topic} className="rounded-xl border border-surface-border overflow-hidden">
-                <button
-                  className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-elevated/50 transition-colors"
-                  onClick={() => setOpenTopic(openTopic === ev.topic ? null : ev.topic)}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <span className={cn(
-                      'inline-flex items-center px-1.5 py-0.5 rounded text-2xs font-semibold border',
-                      PROMISE_COLORS[strength],
-                    )}>
-                      {promiseLabel}
-                    </span>
-                    <span className="text-sm font-medium text-content">
-                      {TOPIC_LABELS[ev.topic] ?? ev.topic}
-                    </span>
-                    <span className="text-2xs text-content-subtle">
-                      H{ev.relevantHouses.join(', H')}
-                    </span>
-                  </div>
-                  <span className="text-content-subtle text-xs">
-                    {openTopic === ev.topic ? '▲' : '▼'}
-                  </span>
-                </button>
-
-                {openTopic === ev.topic && (
-                  <div className="border-t border-surface-border px-4 py-4 space-y-4 bg-surface">
-                    {/* Sub lord detail */}
-                    <div className="space-y-1.5 text-2xs">
-                      <div className="text-content-muted">
-                        <span className="text-content-subtle">H{ev.primaryHouse} Sub Lord: </span>
-                        <strong className="text-content">{ev.primaryCuspSubLord}</strong>
-                      </div>
-                      <div className="text-content-muted">
-                        <span className="text-content-subtle">Signifies: </span>
-                        {(ev.sublordSignifiesWithLevel ?? []).length > 0
-                          ? (ev.sublordSignifiesWithLevel ?? [])
-                              .sort((a, b) => a.house - b.house)
-                              .map((d, i) => (
-                                <span key={i} className={cn('mr-1.5', LEVEL_COLORS[d.level - 1])}>
-                                  H{d.house}<span className="opacity-60">·L{d.level}</span>
-                                </span>
-                              ))
-                          : ev.sublordSignifies?.length > 0
-                            ? ev.sublordSignifies.map(h => `H${h}`).join(', ')
-                            : <span className="text-content-subtle">none</span>
-                        }
-                      </div>
-                      <div className="text-content-muted leading-relaxed">{ev.promiseReason}</div>
-                      <div className="text-content-subtle">
-                        Topic significators: {ev.significators.join(' · ') || '—'}
-                      </div>
-                    </div>
-
-                    {/* Predicted periods */}
-                    {ev.predictedPeriods.length > 0 ? (
-                      <div className="space-y-2">
-                        <div className="text-2xs font-semibold text-content-muted uppercase tracking-wider">
-                          Predicted Favorable Periods
-                        </div>
-                        {ev.predictedPeriods.map((period, i) => (
-                          <div key={i} className="rounded-lg border border-surface-border p-3 space-y-1 bg-surface-elevated">
-                            <div className="flex items-center gap-2">
-                              <span className={cn('text-2xs font-semibold rounded px-1.5 py-0.5', CONFIDENCE_COLORS[period.confidence])}>
-                                {period.confidence.toUpperCase()}
-                              </span>
-                              <span className="text-xs font-semibold text-content">
-                                {period.mahadasha} MD / {period.antardasha} AD
-                              </span>
-                            </div>
-                            <div className="text-2xs text-content-subtle">
-                              {period.startDate} — {period.endDate}
-                            </div>
-                            <div className="text-2xs text-content-muted leading-relaxed">
-                              {period.reason}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-2xs text-content-muted italic">
-                        {ev.isPromised
-                          ? 'No upcoming favorable periods found in visible dasha span.'
-                          : 'Event not clearly promised — no periods predicted.'}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </section>
     </div>
   );
 }

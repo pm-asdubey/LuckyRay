@@ -390,13 +390,6 @@ for (const profile of PROFILES) {
   log(`- **Venus**: ${venP?.sign} H${venP?.house} (${venP?.dignity})`);
   log(`- **Mahadasha**: ${chart.dashas.currentMahadasha.planet} → ${chart.dashas.currentMahadasha.endDate.slice(0,10)}`);
   log(`- **Antardasha**: ${chart.dashas.currentAntardasha?.planet ?? 'n/a'} → ${chart.dashas.currentAntardasha?.endDate.slice(0,10) ?? 'n/a'}`);
-  const kpEvts = chart.kp?.events ?? [];
-  const kpMar = kpEvts.find(e => e.topic === 'marriage');
-  const kpCar = kpEvts.find(e => e.topic === 'career');
-  const kpWealth = kpEvts.find(e => e.topic === 'wealth');
-  log(`- **KP Marriage H7**: ${kpMar?.primaryCuspSubLord ?? 'n/a'} → H${kpMar?.sublordSignifies?.join(', H') ?? '?'} — ${kpMar?.promiseStrength ?? '?'} (${kpMar?.isPromised ? 'promised' : 'not promised'})`);
-  log(`- **KP Career H10**: ${kpCar?.primaryCuspSubLord ?? 'n/a'} → H${kpCar?.sublordSignifies?.join(', H') ?? '?'} — ${kpCar?.isPromised ? 'promised' : 'not promised'}`);
-  log(`- **KP Wealth H11**: ${kpWealth?.primaryCuspSubLord ?? 'n/a'} → ${kpWealth?.isPromised ? 'promised' : 'not promised'}`);
   const yogas = chart.yogas.filter(y => y.detected).map(y => y.name);
   log(`- **Yogas**: ${yogas.length > 0 ? yogas.join(', ') : 'None detected'}`);
   const doshas = chart.doshas.filter(d => d.detected).map(d => d.name);

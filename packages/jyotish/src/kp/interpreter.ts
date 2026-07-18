@@ -11,15 +11,6 @@
 
 import type { KPData, CanonicalChart, PlanetId } from '@luckyray/shared';
 
-const TOPIC_LABELS: Record<string, string> = {
-  career:   'CAREER (H2, H6, H10, H11)',
-  marriage: 'MARRIAGE (H2, H7, H11)',
-  wealth:   'WEALTH (H2, H6, H10, H11)',
-  health:   'HEALTH (H1, H6, H8, H12)',
-  children: 'CHILDREN (H2, H5, H11)',
-  foreign:  'FOREIGN TRAVEL / SETTLEMENT (H3, H9, H12)',
-};
-
 function fmtList(ids: PlanetId[]): string {
   return ids.length > 0 ? ids.join(', ') : '—';
 }
@@ -105,43 +96,6 @@ export function serializeKPInterpretation(chart: CanonicalChart): string {
   lines.push(`Asc Star Lord: ${rp.ascStarLord}  |  Asc Sub Lord: ${rp.ascSubLord}  |  Asc Sign Lord: ${rp.ascSignLord}`);
   lines.push(`Moon Star Lord: ${rp.moonStarLord}  |  Moon Sub Lord: ${rp.moonSubLord}  |  Moon Sign Lord: ${rp.moonSignLord}`);
   lines.push(`Day Lord: ${rp.dayLord}`);
-
-  // ── Event Promise & Periods ──────────────────────────────────────────────
-  lines.push('');
-  lines.push('── KP EVENT PROMISE & PREDICTED PERIODS ─────────────────────────');
-  lines.push('CRITICAL INSTRUCTION TO AI:');
-  lines.push('  1. Use ONLY the predicted periods listed below for any timing claims.');
-  lines.push('  2. Cite the confidence level (HIGH/MODERATE/LOW) for each period.');
-  lines.push('  3. Do NOT invent dasha periods or contradict the promise status below.');
-  lines.push('  4. Explain which Level (L1/L2/L3/L4) signification supports the period.');
-
-  for (const event of kp.events) {
-    lines.push('');
-    lines.push(`▸ ${TOPIC_LABELS[event.topic] ?? event.topic.toUpperCase()}`);
-    lines.push(`  Primary Cusp: H${event.primaryHouse}  |  Sub Lord: ${event.primaryCuspSubLord}`);
-    lines.push(`  Sub Lord signification (all houses): ${
-      event.sublordSignifiesWithLevel.length > 0
-        ? event.sublordSignifiesWithLevel.map(d => `H${d.house}(L${d.level})`).join(', ')
-        : '(none)'
-    }`);
-    lines.push(`  PROMISE: ${event.isPromised ? `YES — ${event.promiseStrength.toUpperCase()}` : 'NO'}`);
-    lines.push(`  Reason: ${event.promiseReason}`);
-    lines.push(`  All significators for this topic: ${event.significators.join(', ') || '(none)'}`);
-
-    if (event.predictedPeriods.length > 0) {
-      lines.push('  Predicted favorable periods:');
-      for (let i = 0; i < event.predictedPeriods.length; i++) {
-        const p = event.predictedPeriods[i]!;
-        lines.push(`    ${i + 1}. [${p.confidence.toUpperCase()}] ${p.mahadasha} MD / ${p.antardasha} AD`);
-        lines.push(`       ${p.startDate} → ${p.endDate}`);
-        lines.push(`       ${p.reason}`);
-      }
-    } else if (!event.isPromised) {
-      lines.push('  No periods predicted — event not clearly promised.');
-    } else {
-      lines.push('  No upcoming favorable periods within the visible dasha span.');
-    }
-  }
 
   lines.push('');
   lines.push('╔═══════════════════════════════════════════════════════════════╗');

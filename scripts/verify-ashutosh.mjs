@@ -43,13 +43,4 @@ if (c.dashas.currentAntardasha) {
   console.log(`  AD: ${c.dashas.currentAntardasha.planet} (${c.dashas.currentAntardasha.startDate.slice(0,10)} - ${c.dashas.currentAntardasha.endDate.slice(0,10)})`);
 }
 
-console.log('\n── KP Events ───────────────────────────────────────────────────────');
-c.kp.events.forEach(e => {
-  const s = e.isPromised ? `PROMISED (${e.promiseStrength})` : 'NOT PROMISED';
-  console.log(`  ${e.topic.padEnd(12)}: ${s}`);
-  if (e.isPromised && e.predictedPeriods.length) {
-    e.predictedPeriods.slice(0,2).forEach(p => {
-      console.log(`    ${p.mahadasha} MD / ${p.antardasha} AD: ${p.startDate} — ${p.endDate} [${p.confidence}]`);
-    });
-  }
-});
+
