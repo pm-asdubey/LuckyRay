@@ -92,6 +92,7 @@ export function buildChartContext(
       current: { planet: currentDasha.planet, endsAt: currentDasha.endDate },
       antardasha: currentAntardasha ? { planet: currentAntardasha.planet, endsAt: currentAntardasha.endDate } : null,
       pratyantar: currentPratyantar ? { planet: currentPratyantar.planet, endsAt: currentPratyantar.endDate } : null,
+      sookshma: chart.dashas.currentSookshma ? { planet: chart.dashas.currentSookshma.planet, endsAt: chart.dashas.currentSookshma.endDate } : null,
       upcomingPeriods,
     },
     yogas: chart.yogas.filter(y => y.detected).map(y => ({ name: y.name, detected: y.detected, strength: y.strength })),
@@ -139,6 +140,18 @@ export function serializeChartContext(context: ChartContext): string {
       }
       gocharLines.push('');
       text += gocharLines.join('\n');
+    }
+
+    // Append current dasha state (all 4 levels)
+    {
+      const d = context.dashas;
+      const dashaLines: string[] = ['', '── ACTIVE DASHA STATE ──────────────────────────────────────'];
+      dashaLines.push(`Mahadasha  : ${d.current.planet} until ${d.current.endsAt.slice(0, 10)}`);
+      if (d.antardasha) dashaLines.push(`Antardasha : ${d.antardasha.planet} until ${d.antardasha.endsAt.slice(0, 10)}`);
+      if (d.pratyantar) dashaLines.push(`Pratyantar : ${d.pratyantar.planet} until ${d.pratyantar.endsAt.slice(0, 10)}`);
+      if (d.sookshma)   dashaLines.push(`Sookshma   : ${d.sookshma.planet} until ${d.sookshma.endsAt.slice(0, 10)}`);
+      dashaLines.push('');
+      text += dashaLines.join('\n');
     }
 
     // Append upcoming dashas

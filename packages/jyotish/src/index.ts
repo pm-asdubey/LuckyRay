@@ -36,7 +36,7 @@ import { computeKP } from './kp';
 
 export const ENGINE_VERSION = '1.0.0';
 
-export { formatDashaDuration } from './dashas';
+export { formatDashaDuration, computeSookshmaForPratyantar } from './dashas';
 export { signIndexToHouse } from './houses';
 export { computeCurrentGochar, checkSadeSati } from './gochar';
 export { serializeChartInterpretation } from './interpreter';

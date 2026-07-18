@@ -7,7 +7,7 @@ import { ArrowLeft, ChevronDown, ChevronRight, MessageCircle, FileText } from 'l
 import { getProfile, getLatestChart } from '@luckyray/storage';
 import type { Profile, StoredChart, DashaPeriod, DashaData } from '@luckyray/shared';
 import { PLANET_SYMBOLS } from '@luckyray/shared';
-import { formatDashaDuration } from '@luckyray/jyotish';
+import { formatDashaDuration, computeSookshmaForPratyantar } from '@luckyray/jyotish';
 import { AppShell } from '@/components/layout/app-shell';
 import { Sidebar, BottomNav } from '@/components/layout/nav';
 import { PageLayout, PageHeader, PageContent } from '@/components/layout/page-layout';
@@ -143,10 +143,24 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
   const [expandedAntar, setExpandedAntar] = useState<string | null>(
     dashas.currentAntardasha ? `${dashas.currentMahadasha.planet}-${dashas.currentAntardasha.planet}` : null,
   );
+  const [expandedPrat, setExpandedPrat] = useState<string | null>(
+    dashas.currentAntardasha && dashas.currentPratyantar
+      ? `${dashas.currentMahadasha.planet}-${dashas.currentAntardasha.planet}-${dashas.currentPratyantar.planet}`
+      : null,
+  );
+  // Cache computed sookshma periods to avoid recalculation on every render
+  const [sookshmaCache, setSookshmaCache] = useState<Record<string, DashaPeriod[]>>({});
   const now = new Date();
   const t = useTranslation();
   const language = useAppStore(s => s.language);
   const d = t.chart.dasha;
+
+  function getSookshma(pratKey: string, prat: DashaPeriod): DashaPeriod[] {
+    if (sookshmaCache[pratKey]) return sookshmaCache[pratKey]!;
+    const periods = computeSookshmaForPratyantar(prat);
+    setSookshmaCache(prev => ({ ...prev, [pratKey]: periods }));
+    return periods;
+  }
 
   return (
     <div className="space-y-4">
@@ -160,9 +174,12 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
           {' '}{d.moonIn} <span className="text-content">{translateNakshatra(dashas.birthNakshatra, language)}</span> {d.atBirth}
           {' '}({d.nakshatraLord}: <span className="text-content">{translatePlanet(dashas.birthNakshatraLord, language)}</span>).
         </p>
-        <p>Three levels: <span className="text-content">Mahadasha</span> →{' '}
+        <p>
+          Four levels:{' '}
+          <span className="text-content">Mahadasha</span> →{' '}
           <span className="text-content">Antardasha</span> →{' '}
-          <span className="text-content">Pratyantar</span>.
+          <span className="text-content">Pratyantar</span> →{' '}
+          <span className="text-content">Sookshma</span>.
         </p>
       </div>
 
@@ -209,13 +226,8 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
                     <span>{formatDashaDuration(maha.durationYears)}</span>
                   </div>
                 </div>
-                {/* Progress bar for current mahadasha */}
                 {isMahaCurrent && (
-                  <DashaProgress
-                    start={maha.startDate}
-                    end={maha.endDate}
-                    className="hidden sm:block w-20"
-                  />
+                  <DashaProgress start={maha.startDate} end={maha.endDate} className="hidden sm:block w-20" />
                 )}
                 <ChevronDown
                   size={14}
@@ -261,11 +273,7 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
                             </div>
                           </div>
                           {isAntiCurrent && (
-                            <DashaProgress
-                              start={anti.startDate}
-                              end={anti.endDate}
-                              className="hidden sm:block w-16"
-                            />
+                            <DashaProgress start={anti.startDate} end={anti.endDate} className="hidden sm:block w-16" />
                           )}
                           {anti.pratyantar && anti.pratyantar.length > 0 && (
                             <ChevronRight
@@ -285,36 +293,85 @@ function DashaFullView({ dashas }: { dashas: DashaData }) {
                               const isPratCurrent = isAntiCurrent &&
                                 new Date(prat.startDate) <= now && new Date(prat.endDate) >= now;
                               const isPratPast = new Date(prat.endDate) < now;
+                              const pratKey = `${maha.planet}-${anti.planet}-${prat.planet}-${prat.startDate}`;
+                              const isPratExpanded = expandedPrat === pratKey;
 
                               return (
-                                <div
-                                  key={`${prat.planet}-${prat.startDate}`}
-                                  className={cn(
-                                    'flex items-center gap-3 px-10 py-2 border-b border-surface-border last:border-0',
-                                    isPratCurrent && 'bg-accent-subtle/20',
-                                  )}
-                                >
-                                  <PlanetSymbol planet={prat.planet} size="xs" />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className={cn(
-                                        'text-2xs font-medium',
-                                        isPratCurrent ? 'text-accent' : isPratPast ? 'text-content-subtle' : 'text-content-muted',
-                                      )}>
-                                        {translatePlanet(prat.planet, language)} {d.pratyantar}
-                                      </span>
-                                      {isPratCurrent && <Badge variant="accent">{d.current}</Badge>}
+                                <div key={`${prat.planet}-${prat.startDate}`}>
+                                  <button
+                                    className={cn(
+                                      'w-full flex items-center gap-3 px-10 py-2 text-left transition-colors hover:bg-surface-elevated',
+                                      isPratCurrent && 'bg-accent-subtle/20',
+                                    )}
+                                    onClick={() => setExpandedPrat(isPratExpanded ? null : pratKey)}
+                                  >
+                                    <PlanetSymbol planet={prat.planet} size="xs" />
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={cn(
+                                          'text-2xs font-medium',
+                                          isPratCurrent ? 'text-accent' : isPratPast ? 'text-content-subtle' : 'text-content-muted',
+                                        )}>
+                                          {translatePlanet(prat.planet, language)} {d.pratyantar}
+                                        </span>
+                                        {isPratCurrent && <Badge variant="accent">{d.current}</Badge>}
+                                      </div>
+                                      <div className="text-2xs text-content-subtle">
+                                        {formatDate(prat.startDate)} → {formatDate(prat.endDate)} · {formatDashaDuration(prat.durationYears)}
+                                      </div>
                                     </div>
-                                    <div className="text-2xs text-content-subtle">
-                                      {formatDate(prat.startDate)} → {formatDate(prat.endDate)} · {formatDashaDuration(prat.durationYears)}
-                                    </div>
-                                  </div>
-                                  {isPratCurrent && (
-                                    <DashaProgress
-                                      start={prat.startDate}
-                                      end={prat.endDate}
-                                      className="hidden sm:block w-14"
+                                    {isPratCurrent && (
+                                      <DashaProgress start={prat.startDate} end={prat.endDate} className="hidden sm:block w-14" />
+                                    )}
+                                    <ChevronRight
+                                      size={10}
+                                      className={cn(
+                                        'text-content-subtle flex-shrink-0 transition-transform duration-200',
+                                        isPratExpanded && 'rotate-90',
+                                      )}
                                     />
+                                  </button>
+
+                                  {/* Sookshma list */}
+                                  {isPratExpanded && (
+                                    <div className="bg-surface-elevated border-t border-surface-border">
+                                      {getSookshma(pratKey, prat).map((sook) => {
+                                        const isSookCurrent = isPratCurrent &&
+                                          new Date(sook.startDate) <= now && new Date(sook.endDate) >= now;
+                                        const isSookPast = new Date(sook.endDate) < now;
+
+                                        return (
+                                          <div
+                                            key={`${sook.planet}-${sook.startDate}`}
+                                            className={cn(
+                                              'flex items-center gap-2 px-14 py-1.5 border-b border-surface-border last:border-0',
+                                              isSookCurrent && 'bg-accent-subtle/30',
+                                            )}
+                                          >
+                                            <span className="text-2xs text-content-subtle w-3 text-center flex-shrink-0">
+                                              {PLANET_SYMBOLS[sook.planet as keyof typeof PLANET_SYMBOLS] ?? '·'}
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                              <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className={cn(
+                                                  'text-2xs',
+                                                  isSookCurrent ? 'text-accent font-semibold' : isSookPast ? 'text-content-subtle' : 'text-content-muted',
+                                                )}>
+                                                  {translatePlanet(sook.planet, language)} {d.sookshma}
+                                                </span>
+                                                {isSookCurrent && <Badge variant="accent" className="text-2xs px-1 py-0">{d.now}</Badge>}
+                                              </div>
+                                              <div className="text-2xs text-content-subtle opacity-70">
+                                                {formatDateShort(sook.startDate)} → {formatDateShort(sook.endDate)}
+                                              </div>
+                                            </div>
+                                            {isSookCurrent && (
+                                              <DashaProgress start={sook.startDate} end={sook.endDate} className="hidden sm:block w-10" />
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   )}
                                 </div>
                               );
@@ -345,32 +402,30 @@ function CurrentDashaSummary({ dashas }: { dashas: DashaData }) {
   const language = useAppStore(s => s.language);
   const d = t.chart.dasha;
 
+  // Determine column count based on available levels
+  const levelCount = 1
+    + (dashas.currentAntardasha ? 1 : 0)
+    + (dashas.currentPratyantar ? 1 : 0)
+    + (dashas.currentSookshma ? 1 : 0);
+  const gridCols = levelCount === 4 ? 'grid-cols-2 sm:grid-cols-4'
+    : levelCount === 3 ? 'grid-cols-1 sm:grid-cols-3'
+    : levelCount === 2 ? 'grid-cols-2'
+    : 'grid-cols-1';
+
   return (
     <div className="rounded-xl border border-accent-muted bg-accent-subtle/30 p-4 space-y-3">
       <div className="text-xs font-semibold text-accent uppercase tracking-wider">{t.dasha.currentPeriod}</div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <DashaLevel
-          label="Mahadasha"
-          planet={dashas.currentMahadasha.planet}
-          endsAt={dashas.currentMahadasha.endDate}
-          level={1}
-        />
+      <div className={cn('grid gap-3', gridCols)}>
+        <DashaLevel label="Mahadasha" planet={dashas.currentMahadasha.planet} endsAt={dashas.currentMahadasha.endDate} level={1} />
         {dashas.currentAntardasha && (
-          <DashaLevel
-            label={d.antardasha}
-            planet={dashas.currentAntardasha.planet}
-            endsAt={dashas.currentAntardasha.endDate}
-            level={2}
-          />
+          <DashaLevel label={d.antardasha} planet={dashas.currentAntardasha.planet} endsAt={dashas.currentAntardasha.endDate} level={2} />
         )}
         {dashas.currentPratyantar && (
-          <DashaLevel
-            label={d.pratyantar}
-            planet={dashas.currentPratyantar.planet}
-            endsAt={dashas.currentPratyantar.endDate}
-            level={3}
-          />
+          <DashaLevel label={d.pratyantar} planet={dashas.currentPratyantar.planet} endsAt={dashas.currentPratyantar.endDate} level={3} />
+        )}
+        {dashas.currentSookshma && (
+          <DashaLevel label={d.sookshma} planet={dashas.currentSookshma.planet} endsAt={dashas.currentSookshma.endDate} level={4} />
         )}
       </div>
 
@@ -387,6 +442,24 @@ function CurrentDashaSummary({ dashas }: { dashas: DashaData }) {
           />
         </div>
       </div>
+
+      {/* Sookshma progress bar — most precise active period */}
+      {dashas.currentSookshma && (() => {
+        const sStart = new Date(dashas.currentSookshma!.startDate).getTime();
+        const sEnd = new Date(dashas.currentSookshma!.endDate).getTime();
+        const sPct = Math.min(100, Math.max(0, ((now.getTime() - sStart) / (sEnd - sStart)) * 100));
+        return (
+          <div className="space-y-1">
+            <div className="flex justify-between text-2xs text-content-muted">
+              <span>{d.sookshma} progress</span>
+              <span>{sPct.toFixed(0)}%</span>
+            </div>
+            <div className="h-1 rounded-full bg-surface-border overflow-hidden">
+              <div className="h-full rounded-full bg-accent/60 transition-all" style={{ width: `${sPct}%` }} />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -439,4 +512,8 @@ function PlanetSymbol({ planet, size }: { planet: string; size: 'xs' | 'sm' | 'l
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+function formatDateShort(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' });
 }

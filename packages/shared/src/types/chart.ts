@@ -171,7 +171,8 @@ export interface DashaData {
   allPeriods: DashaPeriod[];
   currentMahadasha: DashaPeriod;
   currentAntardasha: DashaPeriod | null;
-  currentPratyantar: DashaPeriod | null;  // Current Pratyantar Dasha period
+  currentPratyantar: DashaPeriod | null;
+  currentSookshma: DashaPeriod | null;   // Fourth-level Sookshma Dasha period (days–weeks)
 }
 
 // Current planetary transit positions (Gochar)
@@ -447,6 +448,7 @@ export interface ChartContext {
     current: { planet: PlanetId; endsAt: string };
     antardasha: { planet: PlanetId; endsAt: string } | null;
     pratyantar?: { planet: PlanetId; endsAt: string } | null;
+    sookshma?: { planet: PlanetId; endsAt: string } | null;
     upcomingPeriods?: Array<{
       level: 'Mahadasha' | 'Antardasha';
       planet: PlanetId;

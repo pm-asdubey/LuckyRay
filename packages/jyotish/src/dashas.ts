@@ -76,6 +76,13 @@ export function computeVimshottariDasha(
     new Date(p.startDate) <= now && new Date(p.endDate) >= now,
   ) ?? null;
 
+  // Compute Sookshma only for the current Pratyantar (avoids bloating the stored chart)
+  const currentSookshma = currentPratyantar
+    ? (computeSookshmaForPratyantar(currentPratyantar).find(s =>
+        new Date(s.startDate) <= now && new Date(s.endDate) >= now,
+      ) ?? null)
+    : null;
+
   return {
     system: 'Vimshottari',
     birthNakshatra: nakshatra,
@@ -86,6 +93,7 @@ export function computeVimshottariDasha(
     currentMahadasha,
     currentAntardasha,
     currentPratyantar,
+    currentSookshma,
   };
 }
 
@@ -172,6 +180,39 @@ function buildPratyantar(
 
     // Pratyantar duration = (antardasha_years × pratyantar_planet_years) / 120
     const durationYears = (antarDurationYears * VIMSHOTTARI_YEARS[planet]!) / VIMSHOTTARI_TOTAL_YEARS;
+    const durationMs = durationYears * DAYS_PER_YEAR * 86400000;
+    const endDate = new Date(currentDate.getTime() + durationMs);
+
+    periods.push({
+      planet,
+      startDate: currentDate.toISOString(),
+      endDate: endDate.toISOString(),
+      durationYears,
+    });
+
+    currentDate = endDate;
+  }
+
+  return periods;
+}
+
+/**
+ * Build the 9 Sookshma (4th-level) sub-periods within a single Pratyantar period.
+ * Duration formula: sookshma = (pratyantar_years × planet_years) / 120
+ *
+ * Sookshma periods typically span a few days to a few weeks. They are not stored
+ * in the chart (to avoid bloating StoredChart) — they are computed on demand in the UI.
+ */
+export function computeSookshmaForPratyantar(pratyantar: DashaPeriod): DashaPeriod[] {
+  const firstIndex = VIMSHOTTARI_ORDER.indexOf(pratyantar.planet);
+  const periods: DashaPeriod[] = [];
+  let currentDate = new Date(pratyantar.startDate);
+
+  for (let i = 0; i < 9; i++) {
+    const planetIndex = (firstIndex + i) % 9;
+    const planet = VIMSHOTTARI_ORDER[planetIndex]!;
+
+    const durationYears = (pratyantar.durationYears * VIMSHOTTARI_YEARS[planet]!) / VIMSHOTTARI_TOTAL_YEARS;
     const durationMs = durationYears * DAYS_PER_YEAR * 86400000;
     const endDate = new Date(currentDate.getTime() + durationMs);
 
