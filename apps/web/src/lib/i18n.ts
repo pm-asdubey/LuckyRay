@@ -167,6 +167,7 @@ export const translations = {
       activeProfile: 'Active profile',
       astrologerView: 'Astrologer View',
       personalView: 'Personal View',
+      more: 'More',
     },
 
     home: {
@@ -482,6 +483,28 @@ export const translations = {
       languageDesc: 'Choose the display language',
     },
 
+    googleDrive: {
+      title: 'Google Drive Sync',
+      description: 'Back up and restore all your data via Google Drive.',
+      notConfigured: 'Set NEXT_PUBLIC_GOOGLE_CLIENT_ID to enable Google Drive sync.',
+      connect: 'Connect Google Drive',
+      disconnect: 'Disconnect',
+      syncNow: 'Sync Now',
+      importFromDrive: 'Import from Drive',
+      connected: 'Connected',
+      lastSync: (t: string) => `Last synced: ${t}`,
+      neverSynced: 'Not yet synced',
+      syncing: 'Syncing…',
+      importing: 'Importing…',
+      syncSuccess: 'Synced to Google Drive',
+      importSuccess: (n: number) => `Imported ${n} profiles from Google Drive`,
+      syncFailed: 'Sync failed',
+      importFailed: 'Import failed',
+      autoSync: 'Auto-sync on chart creation',
+      autoSyncDesc: 'Automatically back up to Google Drive when a new chart is generated.',
+      setupInstructions: 'How to set up',
+    },
+
     yogas: {
       noYogas: 'No classical yogas detected in this chart.',
       chartEvidence: 'Chart evidence',
@@ -549,6 +572,7 @@ export const translations = {
       activeProfile: 'सक्रिय प्रोफ़ाइल',
       astrologerView: 'ज्योतिषी दृश्य',
       personalView: 'व्यक्तिगत दृश्य',
+      more: 'अधिक',
     },
 
     home: {
@@ -862,6 +886,28 @@ export const translations = {
       dataExported: 'डेटा निर्यात हुआ',
       language: 'भाषा',
       languageDesc: 'प्रदर्शन भाषा चुनें',
+    },
+
+    googleDrive: {
+      title: 'Google Drive सिंक',
+      description: 'Google Drive के माध्यम से सभी डेटा का बैकअप और पुनर्स्थापना करें।',
+      notConfigured: 'Google Drive सिंक सक्षम करने के लिए NEXT_PUBLIC_GOOGLE_CLIENT_ID सेट करें।',
+      connect: 'Google Drive से जोड़ें',
+      disconnect: 'हटाएं',
+      syncNow: 'अभी सिंक करें',
+      importFromDrive: 'Drive से आयात करें',
+      connected: 'जुड़ा हुआ',
+      lastSync: (t: string) => `अंतिम सिंक: ${t}`,
+      neverSynced: 'अभी तक सिंक नहीं हुआ',
+      syncing: 'सिंक हो रहा है…',
+      importing: 'आयात हो रहा है…',
+      syncSuccess: 'Google Drive में सिंक हो गया',
+      importSuccess: (n: number) => `Google Drive से ${n} प्रोफ़ाइल आयात हुई`,
+      syncFailed: 'सिंक विफल',
+      importFailed: 'आयात विफल',
+      autoSync: 'कुंडली बनाने पर स्वचालित सिंक',
+      autoSyncDesc: 'नई कुंडली बनने पर स्वचालित रूप से Google Drive में बैकअप करें।',
+      setupInstructions: 'सेटअप कैसे करें',
     },
 
     yogas: {

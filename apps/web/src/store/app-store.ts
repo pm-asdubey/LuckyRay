@@ -67,6 +67,11 @@ interface AppState {
   toasts: Toast[];
   addToast: (toast: Omit<Toast, 'id'>) => void;
   removeToast: (id: string) => void;
+
+  // Google Drive sync state (derived from localStorage, NOT persisted in Zustand)
+  driveConnected: boolean;
+  driveLastSync: string | null;
+  setDriveState: (connected: boolean, lastSync: string | null) => void;
 }
 
 export interface Toast {
@@ -133,6 +138,10 @@ export const useAppStore = create<AppState>()(
     }
   },
   removeToast: (id) => set(state => ({ toasts: state.toasts.filter(t => t.id !== id) })),
+
+  driveConnected: false,
+  driveLastSync: null,
+  setDriveState: (connected, lastSync) => set({ driveConnected: connected, driveLastSync: lastSync }),
     }),
     {
       name: 'luckyray-app',

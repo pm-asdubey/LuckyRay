@@ -101,6 +101,13 @@ export default function ChartPage() {
       setStoredChart(stored);
       setActiveChart(stored);
       addToast({ type: 'success', message: `Chart generated in ${result.durationMs}ms` });
+
+      // Auto-sync to Drive in background if connected + autoSync enabled
+      if (typeof window !== 'undefined' && localStorage.getItem('lr_gdrive_autosync') === 'true') {
+        import('@/lib/google-drive').then(({ syncToGoogleDrive }) => {
+          syncToGoogleDrive().catch(() => {}); // silent background sync
+        });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Chart generation failed';
       setError(msg);

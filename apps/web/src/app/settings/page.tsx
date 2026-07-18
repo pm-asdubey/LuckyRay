@@ -15,6 +15,14 @@ import { useAppStore } from '@/store/app-store';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useTranslation } from '@/hooks/use-translation';
 import type { Language } from '@/lib/i18n';
+import {
+  isGoogleDriveConfigured,
+  connectGoogleDrive,
+  disconnectGoogleDrive,
+  getDriveConnectionState,
+  syncToGoogleDrive,
+  importFromGoogleDrive,
+} from '@/lib/google-drive';
 
 const AI_MODELS = [
   { value: 'meta/llama-3.1-70b-instruct', label: 'Llama 3.1 70B (Recommended)' },
@@ -37,14 +45,25 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const { addToast, settings: storeSettings, updateSettings, language, setLanguage } = useAppStore();
+  // Google Drive UI state
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveSyncing, setDriveSyncing] = useState(false);
+  const [driveImporting, setDriveImporting] = useState(false);
+  const [autoSync, setAutoSync] = useState(false);
+
+  const { addToast, settings: storeSettings, updateSettings, language, setLanguage, driveConnected, driveLastSync, setDriveState } = useAppStore();
   const t = useTranslation();
 
   useEffect(() => {
     getAllSettings()
       .then(s => setSettings(s))
       .finally(() => setLoading(false));
-  }, []);
+
+    // Initialise Drive state from localStorage
+    const state = getDriveConnectionState();
+    setDriveState(state.connected, state.lastSync);
+    setAutoSync(typeof window !== 'undefined' && localStorage.getItem('lr_gdrive_autosync') === 'true');
+  }, [setDriveState]);
 
   const handleSave = async (partial: Partial<AppSettings>) => {
     if (!settings) return;
@@ -189,6 +208,138 @@ export default function SettingsPage() {
                   onChange={v => handleSave({ debugMode: v })}
                   disabled={saving}
                 />
+              </CardContent>
+            </Card>
+
+            {/* Google Drive Sync */}
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.googleDrive.title}</CardTitle>
+                <CardDescription>{t.googleDrive.description}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!isGoogleDriveConfigured() ? (
+                  <div className="space-y-2">
+                    <p className="text-xs text-content-muted font-mono bg-surface-elevated rounded-lg px-3 py-2 border border-surface-border">
+                      {t.googleDrive.notConfigured}
+                    </p>
+                    <p className="text-xs text-content-subtle">
+                      {t.googleDrive.setupInstructions}:{' '}
+                      <a
+                        href="https://console.cloud.google.com/apis/credentials"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-accent underline underline-offset-2"
+                      >
+                        Google Cloud Console
+                      </a>
+                    </p>
+                  </div>
+                ) : !driveConnected ? (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    loading={driveConnecting}
+                    onClick={async () => {
+                      setDriveConnecting(true);
+                      try {
+                        await connectGoogleDrive();
+                        const state = getDriveConnectionState();
+                        setDriveState(state.connected, state.lastSync);
+                        addToast({ type: 'success', message: t.googleDrive.connected });
+                      } catch (err) {
+                        addToast({ type: 'error', message: err instanceof Error ? err.message : t.googleDrive.syncFailed });
+                      } finally {
+                        setDriveConnecting(false);
+                      }
+                    }}
+                  >
+                    {t.googleDrive.connect}
+                  </Button>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Status row */}
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">{t.googleDrive.connected}</Badge>
+                      <span className="text-xs text-content-muted">
+                        {driveLastSync === 'never' || !driveLastSync
+                          ? t.googleDrive.neverSynced
+                          : t.googleDrive.lastSync(
+                              driveLastSync === 'never'
+                                ? t.googleDrive.neverSynced
+                                : new Date(driveLastSync).toLocaleString(),
+                            )}
+                      </span>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        loading={driveSyncing}
+                        onClick={async () => {
+                          setDriveSyncing(true);
+                          try {
+                            await syncToGoogleDrive();
+                            const state = getDriveConnectionState();
+                            setDriveState(state.connected, state.lastSync);
+                            addToast({ type: 'success', message: t.googleDrive.syncSuccess });
+                          } catch (err) {
+                            addToast({ type: 'error', message: err instanceof Error ? err.message : t.googleDrive.syncFailed });
+                          } finally {
+                            setDriveSyncing(false);
+                          }
+                        }}
+                      >
+                        {driveSyncing ? t.googleDrive.syncing : t.googleDrive.syncNow}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={driveImporting}
+                        onClick={async () => {
+                          setDriveImporting(true);
+                          try {
+                            const result = await importFromGoogleDrive();
+                            addToast({ type: 'success', message: t.googleDrive.importSuccess(result.profiles) });
+                            window.location.reload();
+                          } catch (err) {
+                            addToast({ type: 'error', message: err instanceof Error ? err.message : t.googleDrive.importFailed });
+                          } finally {
+                            setDriveImporting(false);
+                          }
+                        }}
+                      >
+                        {driveImporting ? t.googleDrive.importing : t.googleDrive.importFromDrive}
+                      </Button>
+                    </div>
+
+                    {/* Auto-sync toggle */}
+                    <ToggleRow
+                      label={t.googleDrive.autoSync}
+                      description={t.googleDrive.autoSyncDesc}
+                      checked={autoSync}
+                      onChange={v => {
+                        setAutoSync(v);
+                        localStorage.setItem('lr_gdrive_autosync', String(v));
+                      }}
+                    />
+
+                    {/* Disconnect */}
+                    <button
+                      className="text-xs text-content-subtle hover:text-error underline underline-offset-2 transition-colors"
+                      onClick={() => {
+                        disconnectGoogleDrive();
+                        setDriveState(false, null);
+                        setAutoSync(false);
+                        localStorage.removeItem('lr_gdrive_autosync');
+                      }}
+                    >
+                      {t.googleDrive.disconnect}
+                    </button>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

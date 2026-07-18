@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, LayoutDashboard, MessageCircle, Settings, FileText, Users, Heart,
-  CalendarDays, Globe, Layers,
+  CalendarDays, Globe, Layers, MoreHorizontal, X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAppStore, type AppMode } from '@/store/app-store';
 import { LuckyRayLogo } from '@/components/brand/logo';
 import { useTranslation } from '@/hooks/use-translation';
 import type { Language } from '@/lib/i18n';
+import { useState } from 'react';
 
 interface NavItem {
   href: string;
@@ -33,13 +34,22 @@ const navItemDefs: NavItem[] = [
   { href: '/settings',    labelKey: 'settings',    icon: <Settings size={16} />,                     modes: ['astrologer', 'user'] },
 ];
 
-const mobileItemDefs: NavItem[] = [
-  { href: '/',        labelKey: 'home',    icon: <Home size={18} />,         exact: true, modes: ['astrologer', 'user'] },
-  { href: '/chart',   labelKey: 'chart',   icon: <LayoutDashboard size={18} />,            modes: ['astrologer'] },
-  { href: '/milan',   labelKey: 'milan',   icon: <Heart size={18} />,                      modes: ['astrologer'] },
-  { href: '/reports', labelKey: 'reports', icon: <FileText size={18} />,                   modes: ['astrologer', 'user'] },
-  { href: '/chat',    labelKey: 'chat',    icon: <MessageCircle size={18} />,               modes: ['astrologer', 'user'] },
-  { href: '/settings',labelKey: 'settings',icon: <Settings size={18} />,                   modes: ['astrologer', 'user'] },
+// Fixed bottom bar items (always visible, no mode filter applied here)
+const mobileBarDefs: NavItem[] = [
+  { href: '/',        labelKey: 'home',    icon: <Home size={18} />,            exact: true, modes: ['astrologer', 'user'] },
+  { href: '/chart',   labelKey: 'chart',   icon: <LayoutDashboard size={18} />,              modes: ['astrologer', 'user'] },
+  { href: '/reports', labelKey: 'reports', icon: <FileText size={18} />,                     modes: ['astrologer', 'user'] },
+  { href: '/chat',    labelKey: 'chat',    icon: <MessageCircle size={18} />,                modes: ['astrologer', 'user'] },
+];
+
+// Items surfaced in the "More" drawer (filtered by mode at render time)
+const moreDrawerDefs: NavItem[] = [
+  { href: '/gochar',      labelKey: 'gochar',      icon: <Globe size={18} />,       modes: ['astrologer'] },
+  { href: '/dasha',       labelKey: 'dashas',      icon: <CalendarDays size={18} />, modes: ['astrologer'] },
+  { href: '/divisional',  labelKey: 'divisional',  icon: <Layers size={18} />,      modes: ['astrologer'] },
+  { href: '/matchmaking', labelKey: 'matchmaking', icon: <Users size={18} />,       modes: ['astrologer'] },
+  { href: '/milan',       labelKey: 'milan',       icon: <Heart size={18} />,       modes: ['astrologer'] },
+  { href: '/settings',    labelKey: 'settings',    icon: <Settings size={18} />,    modes: ['astrologer', 'user'] },
 ];
 
 function isItemActive(pathname: string, item: NavItem): boolean {
@@ -172,38 +182,167 @@ export function Sidebar() {
 }
 
 export function BottomNav() {
-  const pathname = usePathname();
+  const pathname  = usePathname();
   const { appMode } = useAppStore();
-  const t = useTranslation();
-  const visible = mobileItemDefs.filter(item => item.modes.includes(appMode));
+  const t         = useTranslation();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const barItems   = mobileBarDefs.filter(item => item.modes.includes(appMode));
+  const drawerItems = moreDrawerDefs.filter(item => item.modes.includes(appMode));
+
+  const closeMore = () => setMoreOpen(false);
 
   return (
-    <nav
-      className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-surface-border bg-surface/95 backdrop-blur-sm"
-      aria-label="Mobile navigation"
-    >
-      <div className="flex items-center justify-around px-2 py-2">
-        {visible.map(item => {
-          const isActive = isItemActive(pathname, item);
-          const label = t.nav[item.labelKey];
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg min-w-[48px]',
-                'text-2xs transition-colors',
-                isActive ? 'text-accent' : 'text-content-subtle hover:text-content',
-              )}
-              aria-current={isActive ? 'page' : undefined}
-            >
-              {item.icon}
-              {label && <span>{label}</span>}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+    <>
+      {/* ── Bottom bar ─────────────────────────────────────────────────────── */}
+      <nav
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-surface-border bg-surface/95 backdrop-blur-sm"
+        aria-label="Mobile navigation"
+      >
+        <div className="flex items-center justify-around px-2 py-2">
+          {barItems.map(item => {
+            const isActive = isItemActive(pathname, item);
+            const label    = t.nav[item.labelKey];
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg min-w-[48px]',
+                  'text-2xs transition-colors',
+                  isActive ? 'text-accent' : 'text-content-subtle hover:text-content',
+                )}
+                aria-current={isActive ? 'page' : undefined}
+              >
+                {item.icon}
+                {label && <span>{label}</span>}
+              </Link>
+            );
+          })}
+
+          {/* More button */}
+          <button
+            onClick={() => setMoreOpen(true)}
+            className={cn(
+              'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg min-w-[48px]',
+              'text-2xs transition-colors',
+              moreOpen ? 'text-accent' : 'text-content-subtle hover:text-content',
+            )}
+            aria-label={t.nav.more}
+            aria-expanded={moreOpen}
+          >
+            <MoreHorizontal size={18} />
+            <span>{t.nav.more}</span>
+          </button>
+        </div>
+      </nav>
+
+      {/* ── More drawer ────────────────────────────────────────────────────── */}
+      {moreOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="md:hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            onClick={closeMore}
+            aria-hidden="true"
+          />
+
+          {/* Sheet */}
+          <div
+            className={cn(
+              'md:hidden fixed bottom-0 inset-x-0 z-50',
+              'bg-surface border-t border-surface-border rounded-t-2xl',
+              'flex flex-col',
+              'transition-transform duration-300',
+            )}
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.nav.more}
+          >
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="h-1 w-10 rounded-full bg-surface-border" />
+            </div>
+
+            {/* Header row */}
+            <div className="flex items-center justify-between px-4 py-2 border-b border-surface-border">
+              <span className="text-sm font-semibold text-content">{t.nav.more}</span>
+              <button
+                onClick={closeMore}
+                className="rounded-lg p-1.5 text-content-muted hover:text-content hover:bg-surface-elevated transition-colors"
+                aria-label={t.common ? (t as any).common.close : 'Close'}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Mode + Language toggles */}
+            <div className="px-4 py-3 border-b border-surface-border flex items-center gap-3">
+              <ModeToggleInline />
+              <LanguageToggle />
+            </div>
+
+            {/* Nav items grid */}
+            <div className="grid grid-cols-3 gap-2 p-4 pb-8">
+              {drawerItems.map(item => {
+                const isActive = isItemActive(pathname, item);
+                const label    = t.nav[item.labelKey];
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={closeMore}
+                    className={cn(
+                      'flex flex-col items-center gap-2 rounded-xl px-2 py-3',
+                      'text-xs font-medium transition-colors',
+                      isActive
+                        ? 'bg-accent-subtle text-accent'
+                        : 'text-content-muted hover:text-content hover:bg-surface-elevated',
+                    )}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    {item.icon}
+                    <span className="text-center leading-tight">{label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Compact inline mode toggle used inside the More drawer */
+function ModeToggleInline() {
+  const { appMode, setAppMode } = useAppStore();
+  const t = useTranslation();
+  return (
+    <div className="flex flex-1 rounded-lg bg-surface-elevated p-0.5">
+      <button
+        onClick={() => setAppMode('user')}
+        className={cn(
+          'flex-1 rounded-md px-2 py-1.5 text-2xs font-medium transition-colors',
+          appMode === 'user'
+            ? 'bg-surface text-content shadow-sm'
+            : 'text-content-subtle hover:text-content-muted',
+        )}
+      >
+        {t.nav.personal}
+      </button>
+      <button
+        onClick={() => setAppMode('astrologer')}
+        className={cn(
+          'flex-1 rounded-md px-2 py-1.5 text-2xs font-medium transition-colors',
+          appMode === 'astrologer'
+            ? 'bg-surface text-accent shadow-sm'
+            : 'text-content-subtle hover:text-content-muted',
+        )}
+      >
+        {t.nav.astrologer}
+      </button>
+    </div>
   );
 }
 
