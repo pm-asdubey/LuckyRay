@@ -17,6 +17,7 @@ import { DashaTimeline } from '@/components/chart/dasha-timeline';
 import { YogaList } from '@/components/chart/yoga-list';
 import { ShadbalTable } from '@/components/chart/shadbal-table';
 import { ManglikView } from '@/components/chart/manglik-view';
+import { DivisionalView } from '@/components/chart/divisional-view';
 import { Badge } from '@/components/ui/badge';
 import { ErrorCard } from '@/components/ui/error-card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -25,15 +26,16 @@ import { formatShortDate, downloadJson, formatDegrees } from '@/lib/utils';
 import { exportChartAsJson } from '@luckyray/storage';
 import { cn } from '@/lib/utils';
 
-type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp' | 'shadbal' | 'manglik';
+type TabId = 'chart' | 'planets' | 'dashas' | 'yogas' | 'kp' | 'shadbal' | 'manglik' | 'divisional';
 
 const TABS: { id: TabId; label: string }[] = [
-  { id: 'chart',   label: 'Chart' },
-  { id: 'planets', label: 'Planets' },
-  { id: 'dashas',  label: 'Dashas' },
-  { id: 'yogas',   label: 'Yogas' },
-  { id: 'kp',      label: 'KP' },
-  { id: 'manglik', label: 'Manglik' },
+  { id: 'chart',       label: 'Chart' },
+  { id: 'planets',     label: 'Planets' },
+  { id: 'dashas',      label: 'Dashas' },
+  { id: 'yogas',       label: 'Yogas' },
+  { id: 'kp',          label: 'KP' },
+  { id: 'manglik',     label: 'Manglik' },
+  { id: 'divisional',  label: 'D9 / D10' },
 ];
 
 export default function ChartPage() {
@@ -339,6 +341,10 @@ export default function ChartPage() {
 
                 {activeTab === 'manglik' && (
                   <ManglikView chart={chart} />
+                )}
+
+                {activeTab === 'divisional' && (
+                  <DivisionalView chart={chart} />
                 )}
               </div>
             </div>
