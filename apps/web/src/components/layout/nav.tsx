@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, LayoutDashboard, MessageCircle, Settings, FileText, Users,
+  Home, LayoutDashboard, MessageCircle, Settings, FileText, Users, Heart,
   CalendarDays, Globe, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
   { href: '/dasha',       label: 'Dashas',      icon: <CalendarDays size={16} />,                 modes: ['astrologer'] },
   { href: '/divisional',  label: 'Divisional',  icon: <Layers size={16} />,                       modes: ['astrologer'] },
   { href: '/matchmaking', label: 'Matchmaking', icon: <Users size={16} />,                        modes: ['astrologer'] },
+  { href: '/milan',       label: 'Milan',       icon: <Heart size={16} />,                        modes: ['astrologer'] },
   { href: '/reports',     label: 'Reports',     icon: <FileText size={16} />,                     modes: ['astrologer', 'user'] },
   { href: '/chat',        label: 'Chat',        icon: <MessageCircle size={16} />,                modes: ['astrologer', 'user'] },
   { href: '/settings',    label: 'Settings',    icon: <Settings size={16} />,                     modes: ['astrologer', 'user'] },
@@ -33,6 +34,7 @@ const navItems: NavItem[] = [
 const mobileItems: NavItem[] = [
   { href: '/',        label: 'Home',    icon: <Home size={18} />,         exact: true, modes: ['astrologer', 'user'] },
   { href: '/chart',   label: 'Chart',   icon: <LayoutDashboard size={18} />,            modes: ['astrologer'] },
+  { href: '/milan',   label: 'Milan',   icon: <Heart size={18} />,                      modes: ['astrologer'] },
   { href: '/reports', label: 'Reports', icon: <FileText size={18} />,                   modes: ['astrologer', 'user'] },
   { href: '/chat',    label: 'Chat',    icon: <MessageCircle size={18} />,               modes: ['astrologer', 'user'] },
   { href: '/settings',label: '',        icon: <Settings size={18} />,                   modes: ['astrologer', 'user'] },

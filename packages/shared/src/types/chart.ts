@@ -290,6 +290,72 @@ export interface CanonicalChart {
   };
 }
 
+// ─── Compatibility / Milan Types ──────────────────────────────────────────────
+
+export type CompatibilityVerdict =
+  | 'Exceptional'
+  | 'Excellent'
+  | 'Strong'
+  | 'Good'
+  | 'Conditional'
+  | 'Weak'
+  | 'No-Go';
+
+export interface CompatibilityDimension {
+  id: string;
+  name: string;
+  weight: number;
+  score: number;
+  maxScore: number;
+  evidence: string[];
+  risks: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CoupleDashaWindow {
+  startDate: string;
+  endDate: string;
+  mahadashaA: PlanetId;
+  antardashaA: PlanetId;
+  mahadashaB: PlanetId;
+  antardashaB: PlanetId;
+  score: number; // 0–100
+  reason: string;
+}
+
+export interface CompatibilityResult {
+  profileA: Pick<Profile, 'id' | 'name' | 'gender'>;
+  profileB: Pick<Profile, 'id' | 'name' | 'gender'>;
+  dimensions: CompatibilityDimension[];
+  compositeScore: number;
+  finalScore: number;
+  verdict: CompatibilityVerdict;
+  individualStrengthA: number;
+  individualStrengthB: number;
+  strengths: string[];
+  risks: string[];
+  hardFilters: string[];
+  ashtakoot: {
+    total: number;
+    max: number;
+    kootas: { name: string; score: number; max: number; detail: string }[];
+  };
+  timing: {
+    currentScore: number;
+    windows: CoupleDashaWindow[];
+  };
+  computedAt: string;
+}
+
+export interface StoredMatch {
+  id: string;
+  profileAId: string;
+  profileBId: string;
+  result: CompatibilityResult;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Storage Types ────────────────────────────────────────────────────────────
 
 export interface StoredChart {

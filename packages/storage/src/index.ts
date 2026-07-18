@@ -32,3 +32,6 @@ export {
   exportAllData, importData, deleteAllData, EXPORT_SCHEMA_VERSION,
 } from './export-import';
 export type { LuckyRayExport } from './export-import';
+export {
+  saveMatch, getMatch, getMatchesForProfile, deleteMatch,
+} from './matches';

@@ -22,7 +22,7 @@ import { openDB, type IDBPDatabase } from 'idb';
 import type { LuckyRayDB } from './types';
 
 export const DB_NAME = 'luckyray';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 let dbInstance: IDBPDatabase<LuckyRayDB> | null = null;
 
@@ -54,6 +54,14 @@ export async function getDB(): Promise<IDBPDatabase<LuckyRayDB>> {
 
         // Settings store (key-value)
         db.createObjectStore('settings', { keyPath: 'key' });
+      }
+
+      if (oldVersion < 2) {
+        // Matches store (compatibility analyses)
+        const matchStore = db.createObjectStore('matches', { keyPath: 'id' });
+        matchStore.createIndex('byProfileAId', 'profileAId');
+        matchStore.createIndex('byProfileBId', 'profileBId');
+        matchStore.createIndex('byCreatedAt', 'createdAt');
       }
     },
   });

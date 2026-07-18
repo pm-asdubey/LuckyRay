@@ -1,5 +1,5 @@
 import type { DBSchema } from 'idb';
-import type { Profile, StoredChart, Conversation, Message, AppSettings } from '@luckyray/shared';
+import type { Profile, StoredChart, Conversation, Message, AppSettings, StoredMatch } from '@luckyray/shared';
 
 export interface SettingRecord {
   key: string;
@@ -42,5 +42,14 @@ export interface LuckyRayDB extends DBSchema {
   settings: {
     key: string;
     value: SettingRecord;
+  };
+  matches: {
+    key: string;
+    value: StoredMatch;
+    indexes: {
+      byProfileAId: string;
+      byProfileBId: string;
+      byCreatedAt: string;
+    };
   };
 }

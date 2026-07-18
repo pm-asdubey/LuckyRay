@@ -26,7 +26,7 @@ type Nadi = 'Aadi' | 'Madhya' | 'Antya';
 type YoniAnimal = 'Horse' | 'Elephant' | 'Goat' | 'Snake' | 'Dog' | 'Cat' | 'Rat' |
                   'Cow' | 'Buffalo' | 'Tiger' | 'Deer' | 'Monkey' | 'Lion' | 'Mongoose';
 
-const GANA: Gana[] = [
+export const GANA: Gana[] = [
   'Deva',    // 0  Ashwini
   'Manushya',// 1  Bharani
   'Rakshasa',// 2  Krittika
