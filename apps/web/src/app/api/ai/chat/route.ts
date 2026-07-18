@@ -29,7 +29,8 @@ export async function POST(req: NextRequest) {
     stream?: boolean;
     maxTokens?: number;
     systemPromptOverride?: string;
-    systemMode?: 'user' | 'astrologer';  // determines AI persona
+    systemMode?: 'user' | 'astrologer';
+    language?: 'en' | 'hi';
   };
 
   try {
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride, systemMode = 'user' } = body;
+  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride, systemMode = 'user', language = 'en' } = body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
@@ -54,7 +55,12 @@ export async function POST(req: NextRequest) {
   } else {
     basePrompt = buildUserModeSystemPrompt();
   }
-  const systemContent = [basePrompt, chartText].filter(Boolean).join('\n\n');
+
+  const langInstruction = language === 'hi'
+    ? 'LANGUAGE REQUIREMENT: You MUST respond entirely in Hindi using Devanagari script. This applies regardless of what language the user writes in. Do not use English except for planet names (which should use their Hindi equivalents: सूर्य, चंद्र, मंगल, बुध, गुरु, शुक्र, शनि, राहु, केतु) and rashi names (मेष, वृषभ, मिथुन, कर्क, सिंह, कन्या, तुला, वृश्चिक, धनु, मकर, कुंभ, मीन). Numbers may remain as digits (1, 2, 3…). Respond naturally and fluently in Hindi.'
+    : '';
+
+  const systemContent = [basePrompt, chartText, langInstruction].filter(Boolean).join('\n\n');
 
   const apiMessages = [
     { role: 'system', content: systemContent },

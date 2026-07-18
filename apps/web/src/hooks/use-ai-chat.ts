@@ -6,6 +6,7 @@ import type { AIMessage, ChartContext } from '@luckyray/shared';
 interface UseAIChatOptions {
   chartContext?: ChartContext;
   systemMode?: 'user' | 'astrologer';
+  language?: 'en' | 'hi';
   onToken: (token: string) => void;
   onComplete: (fullText: string) => void;
   onError: (error: string) => void;
@@ -47,6 +48,7 @@ async function sleep(ms: number): Promise<void> {
 export function useAIChat({
   chartContext,
   systemMode = 'user',
+  language = 'en',
   onToken,
   onComplete,
   onError,
@@ -89,7 +91,7 @@ export function useAIChat({
             response = await fetch('/api/ai/chat', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ messages, chartContext, stream: true, systemMode }),
+              body: JSON.stringify({ messages, chartContext, stream: true, systemMode, language }),
               signal: controller.signal,
             });
             break; // Success — exit retry loop
@@ -199,7 +201,7 @@ export function useAIChat({
 
       return { success: true, text: fullText };
     },
-    [chartContext, systemMode],
+    [chartContext, systemMode, language],
   );
 
   const send = useCallback(

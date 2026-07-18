@@ -335,6 +335,7 @@ async function streamSection(
   chartContext: import('@luckyray/shared').ChartContext,
   signal: AbortSignal,
   onChunk: (text: string, waitingMsg?: string) => void,
+  language: 'en' | 'hi' = 'en',
 ): Promise<StreamResult> {
   const MAX_PASSES = 4;
   const MAX_ATTEMPTS_PER_PASS = 3;
@@ -371,6 +372,7 @@ async function streamSection(
             model: 'meta/llama-3.1-70b-instruct',
             stream: true,
             maxTokens: 2048,
+            language,
           }),
         });
 
@@ -661,7 +663,7 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Partial<Record<ReportType, ReportState>>>({});
   const [sectionStatus, setSectionStatus] = useState<Record<string, string>>({});
   const abortRef = useRef<AbortController | null>(null);
-  const { addToast } = useAppStore();
+  const { addToast, language } = useAppStore();
   const t = useTranslation();
 
   useEffect(() => {
@@ -730,6 +732,7 @@ export default function ReportsPage() {
         chartContext,
         ctrl.signal,
         (fullText, waitMsg) => {
+
           updateSectionContent(reportType, i, fullText);
           if (waitMsg) {
             setSectionStatus(prev => ({ ...prev, [sectionKey]: waitMsg }));
@@ -756,6 +759,7 @@ export default function ReportsPage() {
             }));
           }
         },
+        language,
       );
 
       if (result.outcome === 'aborted') break;
@@ -785,7 +789,7 @@ export default function ReportsPage() {
     if (!ctrl.signal.aborted) {
       setReports(prev => ({ ...prev, [reportType]: { ...prev[reportType]!, status: 'done' } }));
     }
-  }, [storedChart, addToast, updateSectionContent]);
+  }, [storedChart, addToast, updateSectionContent, language]);
 
   const cancelGeneration = useCallback(() => {
     abortRef.current?.abort();

@@ -105,7 +105,7 @@ export default function ChatPage() {
   const rafRef = useRef<number | null>(null);
   // Mirror of messages state for use in async callbacks without stale closures
   const messagesRef = useRef<Message[]>([]);
-  const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming, appMode } = useAppStore();
+  const { addToast, setActiveProfile, setActiveChart, setActiveConversation, setIsStreaming: setStoreStreaming, appMode, language } = useAppStore();
   const t = useTranslation();
 
   useEffect(() => {
@@ -129,6 +129,7 @@ export default function ChatPage() {
   const { send, continue: continueResponse, abort } = useAIChat({
     systemMode: appMode,
     chartContext,
+    language,
     onToken: (token) => {
       // Batch token appends into a single RAF-gated state update.
       // Without this, 100 tokens/sec = 100 setState calls/sec = browser choke.

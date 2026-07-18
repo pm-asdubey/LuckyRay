@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { useAppStore } from '@/store/app-store';
 
 type TabId = 'summary' | 'ashtakoot' | 'chemistry' | 'marriage' | 'timing' | 'ai';
 
@@ -358,6 +359,7 @@ function AIReportTab({ result, chartA, chartB }: { result: CompatibilityResult; 
   const [text, setText] = useState('');
   const [status, setStatus] = useState<'idle' | 'streaming' | 'done' | 'error'>('idle');
   const abortRef = useRef<AbortController | null>(null);
+  const language = useAppStore(s => s.language);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
@@ -389,6 +391,7 @@ function AIReportTab({ result, chartA, chartB }: { result: CompatibilityResult; 
           gunaMilanSummary,
           person1Name: result.profileA.name,
           person2Name: result.profileB.name,
+          language,
         }),
         signal: controller.signal,
       });

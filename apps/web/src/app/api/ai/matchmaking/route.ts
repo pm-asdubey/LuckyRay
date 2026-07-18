@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
     person1Name: string;
     person2Name: string;
     continuationMessages?: { role: 'user' | 'assistant'; content: string }[];
+    language?: 'en' | 'hi';
   };
 
   try {
@@ -31,11 +32,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { chart1Context, chart2Context, gunaMilanSummary, person1Name, person2Name, continuationMessages } = body;
+  const { chart1Context, chart2Context, gunaMilanSummary, person1Name, person2Name, continuationMessages, language = 'en' } = body;
 
   const chart1Summary = serializeChartContext(chart1Context);
   const chart2Summary = serializeChartContext(chart2Context);
-  const systemContent = buildMatchmakingSystemPrompt();
+  const baseSystemPrompt = buildMatchmakingSystemPrompt();
+  const langInstruction = language === 'hi'
+    ? 'LANGUAGE REQUIREMENT: You MUST respond entirely in Hindi using Devanagari script, regardless of what language the user writes in. Planet names in Hindi: सूर्य, चंद्र, मंगल, बुध, गुरु, शुक्र, शनि, राहु, केतु. Rashi names in Hindi: मेष, वृषभ, मिथुन, कर्क, सिंह, कन्या, तुला, वृश्चिक, धनु, मकर, कुंभ, मीन. Numbers may remain as digits.'
+    : '';
+  const systemContent = [baseSystemPrompt, langInstruction].filter(Boolean).join('\n\n');
 
   // For initial call, build the user message. For continuations, use the provided messages.
   const messages = continuationMessages && continuationMessages.length > 0
