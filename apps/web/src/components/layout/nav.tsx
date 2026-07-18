@@ -19,37 +19,52 @@ interface NavItem {
   icon: React.ReactNode;
   exact?: boolean;
   modes: AppMode[];
+  requiresProfile?: boolean;  // hidden in sidebar when no profile is active
 }
 
 const navItemDefs: NavItem[] = [
   { href: '/',            labelKey: 'home',        icon: <Home size={16} />,            exact: true, modes: ['astrologer', 'user'] },
-  { href: '/chart',       labelKey: 'chart',       icon: <LayoutDashboard size={16} />,              modes: ['astrologer'] },
-  { href: '/gochar',      labelKey: 'gochar',      icon: <Globe size={16} />,                        modes: ['astrologer'] },
-  { href: '/dasha',       labelKey: 'dashas',      icon: <CalendarDays size={16} />,                 modes: ['astrologer'] },
-  { href: '/divisional',  labelKey: 'divisional',  icon: <Layers size={16} />,                       modes: ['astrologer'] },
+  { href: '/chart',       labelKey: 'chart',       icon: <LayoutDashboard size={16} />,              modes: ['astrologer'], requiresProfile: true },
+  { href: '/gochar',      labelKey: 'gochar',      icon: <Globe size={16} />,                        modes: ['astrologer'], requiresProfile: true },
+  { href: '/dasha',       labelKey: 'dashas',      icon: <CalendarDays size={16} />,                 modes: ['astrologer'], requiresProfile: true },
+  { href: '/divisional',  labelKey: 'divisional',  icon: <Layers size={16} />,                       modes: ['astrologer'], requiresProfile: true },
   { href: '/matchmaking', labelKey: 'matchmaking', icon: <Users size={16} />,                        modes: ['astrologer'] },
   { href: '/milan',       labelKey: 'milan',       icon: <Heart size={16} />,                        modes: ['astrologer'] },
-  { href: '/reports',     labelKey: 'reports',     icon: <FileText size={16} />,                     modes: ['astrologer', 'user'] },
-  { href: '/chat',        labelKey: 'chat',        icon: <MessageCircle size={16} />,                modes: ['astrologer', 'user'] },
+  { href: '/reports',     labelKey: 'reports',     icon: <FileText size={16} />,                     modes: ['astrologer', 'user'], requiresProfile: true },
+  { href: '/chat',        labelKey: 'chat',        icon: <MessageCircle size={16} />,                modes: ['astrologer', 'user'], requiresProfile: true },
   { href: '/settings',    labelKey: 'settings',    icon: <Settings size={16} />,                     modes: ['astrologer', 'user'] },
 ];
+
+// Resolve profile-specific hrefs when a profile is active
+function resolveHref(href: string, profileId: string | undefined): string {
+  if (!profileId) return href;
+  const profileRoutes: Record<string, string> = {
+    '/chart':      `/chart/${profileId}`,
+    '/gochar':     `/gochar/${profileId}`,
+    '/dasha':      `/dasha/${profileId}`,
+    '/divisional': `/divisional/${profileId}`,
+    '/reports':    `/reports/${profileId}`,
+    '/chat':       `/chat/${profileId}`,
+  };
+  return profileRoutes[href] ?? href;
+}
 
 // Fixed bottom bar items (always visible, no mode filter applied here)
 const mobileBarDefs: NavItem[] = [
   { href: '/',        labelKey: 'home',    icon: <Home size={18} />,            exact: true, modes: ['astrologer', 'user'] },
-  { href: '/chart',   labelKey: 'chart',   icon: <LayoutDashboard size={18} />,              modes: ['astrologer', 'user'] },
-  { href: '/reports', labelKey: 'reports', icon: <FileText size={18} />,                     modes: ['astrologer', 'user'] },
-  { href: '/chat',    labelKey: 'chat',    icon: <MessageCircle size={18} />,                modes: ['astrologer', 'user'] },
+  { href: '/chart',   labelKey: 'chart',   icon: <LayoutDashboard size={18} />,              modes: ['astrologer', 'user'], requiresProfile: true },
+  { href: '/reports', labelKey: 'reports', icon: <FileText size={18} />,                     modes: ['astrologer', 'user'], requiresProfile: true },
+  { href: '/chat',    labelKey: 'chat',    icon: <MessageCircle size={18} />,                modes: ['astrologer', 'user'], requiresProfile: true },
 ];
 
 // Items surfaced in the "More" drawer (filtered by mode at render time)
 const moreDrawerDefs: NavItem[] = [
-  { href: '/gochar',      labelKey: 'gochar',      icon: <Globe size={18} />,       modes: ['astrologer'] },
-  { href: '/dasha',       labelKey: 'dashas',      icon: <CalendarDays size={18} />, modes: ['astrologer'] },
-  { href: '/divisional',  labelKey: 'divisional',  icon: <Layers size={18} />,      modes: ['astrologer'] },
-  { href: '/matchmaking', labelKey: 'matchmaking', icon: <Users size={18} />,       modes: ['astrologer'] },
-  { href: '/milan',       labelKey: 'milan',       icon: <Heart size={18} />,       modes: ['astrologer'] },
-  { href: '/settings',    labelKey: 'settings',    icon: <Settings size={18} />,    modes: ['astrologer', 'user'] },
+  { href: '/gochar',      labelKey: 'gochar',      icon: <Globe size={18} />,        modes: ['astrologer'], requiresProfile: true },
+  { href: '/dasha',       labelKey: 'dashas',      icon: <CalendarDays size={18} />, modes: ['astrologer'], requiresProfile: true },
+  { href: '/divisional',  labelKey: 'divisional',  icon: <Layers size={18} />,       modes: ['astrologer'], requiresProfile: true },
+  { href: '/matchmaking', labelKey: 'matchmaking', icon: <Users size={18} />,        modes: ['astrologer'] },
+  { href: '/milan',       labelKey: 'milan',       icon: <Heart size={18} />,        modes: ['astrologer'] },
+  { href: '/settings',    labelKey: 'settings',    icon: <Settings size={18} />,     modes: ['astrologer', 'user'] },
 ];
 
 function isItemActive(pathname: string, item: NavItem): boolean {
@@ -120,7 +135,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const { activeProfile, appMode } = useAppStore();
   const t = useTranslation();
-  const visibleItems = navItemDefs.filter(item => item.modes.includes(appMode));
+  const profileId = activeProfile?.id;
+
+  const visibleItems = navItemDefs.filter(item =>
+    item.modes.includes(appMode) &&
+    (!item.requiresProfile || !!profileId),
+  );
 
   return (
     <nav
@@ -152,11 +172,12 @@ export function Sidebar() {
 
       <div className="flex-1 flex flex-col gap-0.5 p-3 pt-2 overflow-y-auto">
         {visibleItems.map(item => {
-          const isActive = isItemActive(pathname, item);
+          const resolvedHref = resolveHref(item.href, profileId);
+          const isActive = isItemActive(pathname, { ...item, href: resolvedHref });
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={resolvedHref}
               className={cn(
                 'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors',
                 isActive
@@ -170,6 +191,17 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Prompt to select a profile when none is active */}
+        {!profileId && (appMode === 'astrologer' || appMode === 'user') && (
+          <Link
+            href="/profiles"
+            className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-surface-border px-3 py-2.5 text-xs text-content-subtle hover:text-content hover:border-accent-muted transition-colors"
+          >
+            <Users size={13} className="flex-shrink-0" />
+            <span>{t.nav.selectProfile}</span>
+          </Link>
+        )}
       </div>
 
       <div className="px-4 py-3 border-t border-surface-border">
@@ -183,12 +215,17 @@ export function Sidebar() {
 
 export function BottomNav() {
   const pathname  = usePathname();
-  const { appMode } = useAppStore();
+  const { appMode, activeProfile } = useAppStore();
   const t         = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const profileId = activeProfile?.id;
 
-  const barItems   = mobileBarDefs.filter(item => item.modes.includes(appMode));
-  const drawerItems = moreDrawerDefs.filter(item => item.modes.includes(appMode));
+  const barItems    = mobileBarDefs.filter(item =>
+    item.modes.includes(appMode) && (!item.requiresProfile || !!profileId),
+  );
+  const drawerItems = moreDrawerDefs.filter(item =>
+    item.modes.includes(appMode) && (!item.requiresProfile || !!profileId),
+  );
 
   const closeMore = () => setMoreOpen(false);
 
@@ -201,12 +238,13 @@ export function BottomNav() {
       >
         <div className="flex items-center justify-around px-2 py-2">
           {barItems.map(item => {
-            const isActive = isItemActive(pathname, item);
-            const label    = t.nav[item.labelKey];
+            const resolvedHref = resolveHref(item.href, profileId);
+            const isActive     = isItemActive(pathname, { ...item, href: resolvedHref });
+            const label        = t.nav[item.labelKey];
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={resolvedHref}
                 className={cn(
                   'flex flex-col items-center gap-1 px-3 py-1.5 rounded-lg min-w-[48px]',
                   'text-2xs transition-colors',
@@ -285,12 +323,13 @@ export function BottomNav() {
             {/* Nav items grid */}
             <div className="grid grid-cols-3 gap-2 p-4 pb-8">
               {drawerItems.map(item => {
-                const isActive = isItemActive(pathname, item);
-                const label    = t.nav[item.labelKey];
+                const resolvedHref = resolveHref(item.href, profileId);
+                const isActive     = isItemActive(pathname, { ...item, href: resolvedHref });
+                const label        = t.nav[item.labelKey];
                 return (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={resolvedHref}
                     onClick={closeMore}
                     className={cn(
                       'flex flex-col items-center gap-2 rounded-xl px-2 py-3',

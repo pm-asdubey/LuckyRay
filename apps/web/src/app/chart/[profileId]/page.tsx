@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, RefreshCw, MessageCircle, Download, Edit2, CalendarDays, FileText, Flame } from 'lucide-react';
+import { ArrowLeft, RefreshCw, Download, Edit2, Flame } from 'lucide-react';
 import { getProfile, getLatestChart, saveChart } from '@luckyray/storage';
 import type { Profile, StoredChart } from '@luckyray/shared';
 import { generateChart } from '@luckyray/jyotish';
@@ -191,30 +191,10 @@ export default function ChartPage() {
             actions={
               <div className="flex items-center gap-2">
                 {chart && (
-                  <>
-                    <Button variant="ghost" size="sm" onClick={handleExport}>
-                      <Download size={14} />
-                      <span className="hidden sm:inline">{t.chart.export}</span>
-                    </Button>
-                    <Link href={`/dasha/${profile.id}`}>
-                      <Button variant="ghost" size="sm">
-                        <CalendarDays size={14} />
-                        <span className="hidden sm:inline">{t.chart.dashas}</span>
-                      </Button>
-                    </Link>
-                    <Link href={`/reports/${profile.id}`}>
-                      <Button variant="ghost" size="sm">
-                        <FileText size={14} />
-                        <span className="hidden sm:inline">{t.chart.reports}</span>
-                      </Button>
-                    </Link>
-                    <Link href={`/chat/${profile.id}`}>
-                      <Button variant="secondary" size="sm">
-                        <MessageCircle size={14} />
-                        <span className="hidden sm:inline">{t.chart.chat}</span>
-                      </Button>
-                    </Link>
-                  </>
+                  <Button variant="ghost" size="sm" onClick={handleExport}>
+                    <Download size={14} />
+                    <span className="hidden sm:inline">{t.chart.export}</span>
+                  </Button>
                 )}
                 <Button
                   variant="primary"

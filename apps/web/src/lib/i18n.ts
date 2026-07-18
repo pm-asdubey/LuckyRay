@@ -168,6 +168,7 @@ export const translations = {
       astrologerView: 'Astrologer View',
       personalView: 'Personal View',
       more: 'More',
+      selectProfile: 'Select a profile',
     },
 
     home: {
@@ -574,6 +575,7 @@ export const translations = {
       astrologerView: 'ज्योतिषी दृश्य',
       personalView: 'व्यक्तिगत दृश्य',
       more: 'अधिक',
+      selectProfile: 'एक प्रोफ़ाइल चुनें',
     },
 
     home: {

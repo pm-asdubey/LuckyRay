@@ -51,31 +51,47 @@ const REPORT_ICONS: Record<ReportType, React.ReactNode> = {
 };
 
 const REPORT_META: Record<ReportType, { title: string; subtitle: string }> = {
-  career: { title: 'Career & Profession', subtitle: '10th house, dashas, timing' },
-  love:   { title: 'Love & Marriage',     subtitle: '7th house, Venus, timing' },
-  wealth: { title: 'Wealth & Finance',    subtitle: '2nd, 11th, Dhana yogas' },
-  health: { title: 'Health & Vitality',   subtitle: 'Lagna, 6th, 8th house' },
+  career: { title: 'Career & Purpose',  subtitle: 'Who you are professionally, timing windows' },
+  love:   { title: 'Love & Marriage',   subtitle: 'How you love, relationship timing' },
+  wealth: { title: 'Wealth & Money',    subtitle: 'Your financial nature, growth windows' },
+  health: { title: 'Health & Vitality', subtitle: 'Your constitution, energy, timing' },
 };
 
 const REPORT_TYPES: ReportType[] = ['career', 'love', 'wealth', 'health'];
 
 // ─── Report System Prompt ─────────────────────────────────────────────────────
-// This replaces the chat system prompt entirely for reports.
-// Strict output style: planet → result → confidence. No Jyotish lectures.
 
-const REPORT_SYSTEM_PROMPT = `You are a Jyotish analyst writing a structured astrological report section.
+const REPORT_SYSTEM_PROMPT = `You are writing a personal Jyotish life report for someone reading about themselves.
 
-OUTPUT RULES — FOLLOW EXACTLY:
-- Write only about the SPECIFIC topic you are asked. Do not bring in other life areas.
-- Lead each observation with the planet or combination in **bold**, then 1–2 sentences max.
-- Format: **Planet** (role) — result. [HIGH / MEDIUM / LOW]
-- Use bullet points. Paragraphs only for the final summary line.
-- Do NOT explain how Jyotish works or what houses/signs mean in general.
-- Do NOT add preambles, meta-commentary, headers like "Response Structure", or instructions.
-- Do NOT say "The native". Use direct statements.
-- State negative indicators honestly. Do not soften them.
-- End every section with **Bottom line:** followed by 1–2 sentences.
-- Output ONLY the astrological analysis. Nothing else.`.trim();
+VOICE — CRITICAL:
+- Always address the person directly: "you", "your", "you have", "for you".
+- Never use "the native", "they", "this person", or third-person language of any kind.
+- Write as if you are a wise, honest friend explaining their chart to their face.
+
+CONTENT FOCUS:
+- Lead with what this means for the person's life — their feelings, choices, outcomes, timing.
+- Briefly mention the planet or combination in parentheses as context, not as the headline.
+- Example of WRONG: "**Sun in H10 in Aries (Exalted)** — career authority is strong."
+- Example of RIGHT: "You carry a natural authority that makes you suited to leadership roles (Sun exalted in your 10th house)."
+- The insight about the person's life comes first. The planet is the supporting evidence.
+
+FORMAT:
+- Bullet points for individual observations, one per idea.
+- Each bullet: 1–2 sentences max. Clear, plain language.
+- End every section with **In short:** followed by 1–2 honest, direct sentences.
+- No preambles, no meta-commentary, no methodology explanations.
+- Be honest about challenges. Do not soften real difficulties.
+
+CONFIDENCE SCORES:
+- End every prediction or timing claim with [Confidence: N%] where N is 0–100.
+- A synthesis of natal promise + KP + dasha + transit = higher confidence.
+- Missing any of the four inputs reduces confidence accordingly.
+
+SYNTHESIS REQUIREMENT — for timing sections:
+- Before stating any timing prediction, check all four: Natal promise → KP sub-lord → all 4 Dasha levels (Maha/Antar/Pratyantar/Sookshma) → Gochar (Jupiter + Saturn).
+- State which systems agree and which are neutral or conflicting.
+
+Output ONLY the analysis. Nothing else.`.trim();
 
 // ─── Section Prompts ──────────────────────────────────────────────────────────
 
@@ -86,216 +102,250 @@ function getSections(type: ReportType): SectionDef[] {
     career: [
       {
         id: 'c1',
-        title: '1. Career Signature',
-        prompt: `TOPIC: Career and profession ONLY. Do not mention marriage, health, or any other life area.
+        title: '1. Who You Are Professionally',
+        prompt: `TOPIC: Career and professional identity ONLY.
 
-From the chart data, write bullet points covering:
-- **10th lord** — which planet, where placed, its dignity, and what that means for career
-- **Planets in 10th house** — each one and its career implication (skip if empty)
-- **Sun** (authority, status, government) — placement and career meaning
-- **Saturn** (career karaka, discipline, longevity) — placement and career meaning
-- **6th lord** (daily work, service) — brief placement note
-- **11th lord** (income, gains) — whether it supports earnings
-- **Career domain** — 2–3 specific industries or roles this chart points to
+Write bullet points that tell this person about themselves — their natural work style, strengths, and the kind of professional life they are built for.
 
-End with: **Bottom line:** [1–2 sentence overall career signature]`,
+Cover:
+- What kind of work environment suits you naturally (independent, structured, people-focused, creative, analytical…)
+- Where your ambition lives and what drives you professionally
+- Your relationship with authority — do you thrive under it, resist it, or are you the authority?
+- The professional domains and roles this chart points to — be specific (2–3 examples)
+- Your stamina and relationship with consistency in work
+- One honest limitation or blind spot in your professional nature
+
+Briefly note the astrological basis in parentheses (e.g., "10th lord Saturn in H6" or "Sun exalted") — but the person's experience comes first.
+
+End with: **In short:** [1–2 sentences on who this person is professionally]`,
       },
       {
         id: 'c2',
-        title: '2. Yogas & Strengths',
-        prompt: `TOPIC: Career yogas and potential ONLY.
+        title: '2. Your Career Potential',
+        prompt: `TOPIC: Career potential, strengths, and special combinations ONLY.
 
-From the chart data, identify:
-- Any **Raja Yogas** involving career houses (10th, 6th, 11th) — name the planets and what they indicate
-- **Dharma-Karmadhipati Yoga** (9th + 10th lords) — present or absent, implication
-- Any **Pancha Mahapurusha Yoga** — which one, career domain it strengthens
-- Any **Neecha Bhanga** or **Parivartana** affecting career planets
-- **Overall career strength**: Exceptional / Strong / Moderate / Limited — 1 line of evidence
+Write directly to this person about what elevates or constrains their professional life.
 
-End with: **Bottom line:** [career potential in one sentence]`,
+Cover:
+- Do you have special career combinations that indicate recognition, authority, or public success? (Describe what this means for them, note the yoga in parentheses)
+- Is this a chart built for entrepreneurship, employment, public roles, or creative fields?
+- What gives you an edge over peers in your professional domain
+- If there are difficult combinations, what they actually mean in practice — and whether they cancel or compound
+- Overall career potential: Exceptional / Strong / Moderate / Limited — with one honest reason
+
+End with: **In short:** [career ceiling and standout potential in 1–2 sentences]`,
       },
       {
         id: 'c3',
-        title: '3. Timing — Dasha, KP & Transits',
-        prompt: `TOPIC: Career timing ONLY. Cover all three layers briefly.
+        title: '3. When — Career Timing',
+        prompt: `TOPIC: Career timing ONLY. Synthesize all four layers.
 
-**KP**: H10 sub-lord — which houses does it signify? Is career promised? What KP periods are active?
+First, establish the promise: Does your chart fundamentally support professional success? (Check KP 10th house sub-lord — is career promised? State briefly.)
 
-**Current Dasha**:
-- Mahadasha lord — which houses it rules, career verdict [CONFIDENCE]
-- Antardasha lord — immediate career conditions [CONFIDENCE]
+Then walk through timing:
 
-**Upcoming 3 years**: for each upcoming antardasha, one bullet: planet → career implication → dates
+**Right now** — What does your current dasha period mean for your career?
+- Current Mahadasha: what professional theme does this period carry for you? Until when?
+- Current Antardasha: what does it bring in the next weeks/months?
+- Current Pratyantar + Sookshma: what is the precise immediate window? (days to weeks)
 
-**Transits** (use gochar data from chart):
-- Saturn transit — which natal house, career impact
-- Jupiter transit — which natal house, career impact
+**Upcoming windows** — For the next 1–2 Antardashas, one bullet each: what this period means for your career, approximate dates.
 
-**Best career window** in the next 3 years — identify it with the dasha+transit combination that creates it.
+**Transits right now** — How do current Jupiter and Saturn transits affect your career houses? Do they confirm or contradict the dasha?
 
-End with: **Bottom line:** [timing verdict in 1–2 sentences]`,
+**Best window in the next 3 years** — State the dasha combination + transit alignment that creates the strongest career opportunity. Give approximate dates. [Confidence: N%]
+
+**One caution period** — when to avoid major professional risk or new ventures.
+
+End with: **In short:** [timing verdict — when to push and when to wait, in 1–2 sentences] [Confidence: N%]`,
       },
     ],
     love: [
       {
         id: 'l1',
-        title: '1. Relationship Signature',
-        prompt: `TOPIC: Love and marriage ONLY. Do not mention career, health, or wealth.
+        title: '1. How You Love',
+        prompt: `TOPIC: Love, relationships, and partnership ONLY.
 
-From the chart data, write bullet points covering:
-- **7th lord** — placement, dignity, and partnership implication
-- **Planets in 7th house** — each with its relationship implication (skip if empty)
-- **Venus** (love, partnership karaka) — sign, house, dignity, and relationship meaning
-- **Moon** (emotional nature in relationships) — condition and emotional pattern
-- **5th lord** (romance, attraction) — brief note
-- **Partner profile** — 2–3 qualities the 7th house sign and lord indicate in a partner
+Write bullet points that describe this person's emotional nature and relationship patterns — how they love, what they need from a partner, and the kind of relationship they naturally create.
 
-End with: **Bottom line:** [relationship signature in 1–2 sentences]`,
+Cover:
+- Your emotional style in relationships — are you warm and expressive, reserved, intense, romantic, practical?
+- What you genuinely need from a partner to feel secure and fulfilled
+- The kind of person you are naturally drawn to — personality, qualities, background
+- How you handle conflict, commitment, and vulnerability in relationships
+- One honest pattern that has created difficulty for you in past or future relationships
+- Whether this chart indicates a deep partnership, multiple relationships, or a preference for independence
+
+Note the astrological basis briefly in parentheses — but the insight about you comes first.
+
+End with: **In short:** [1–2 sentences on who you are in relationships]`,
       },
       {
         id: 'l2',
-        title: '2. Doshas, Yogas & Delays',
-        prompt: `TOPIC: Marriage combinations ONLY.
+        title: '2. Marriage — Promise & Challenges',
+        prompt: `TOPIC: Marriage and committed partnership ONLY.
 
-From the chart data, identify:
-- **Manglik Dosha** — Mars in which house? Severity? Any cancellations present?
-- **Marriage yoga** — any Raja Yoga or beneficial exchange involving the 7th lord
-- **Afflictions** — Saturn, Rahu, Ketu influence on 7th house or Venus
-- **Delay indicators** — if 7th lord is in dusthana or afflicted, state it honestly
-- **Overall marriage prospect**: Favorable / Delayed / Challenged — 1 line of evidence
+Write honestly to this person about what their chart says about marriage.
 
-End with: **Bottom line:** [marriage potential summary]`,
+Cover:
+- Is marriage strongly indicated in your chart, or are there factors that delay or complicate it?
+- If Manglik Dosha is present — what it actually means for you in real terms, and whether cancellations reduce its effect
+- Influences that strengthen your relationship potential — a specific yoga, a well-placed 7th lord, etc.
+- Influences that create challenges — afflictions, Saturn's role, Rahu/Ketu on 7th house — stated honestly
+- Whether you are more suited to an early marriage, a late marriage, or a partnership that grows slowly
+- Overall marriage prospect: Favorable / Delayed / Challenged — and why in plain language
+
+End with: **In short:** [honest assessment of marriage potential and what to expect]`,
       },
       {
         id: 'l3',
-        title: '3. Timing — Dasha, KP & Transits',
-        prompt: `TOPIC: Marriage timing ONLY.
+        title: '3. When — Relationship Timing',
+        prompt: `TOPIC: Relationship and marriage timing ONLY. Synthesize all four layers.
 
-**KP**: H7 sub-lord — houses signified, marriage promised? Active KP marriage periods?
+First, establish the promise: Does your chart promise marriage? (Check KP 7th house sub-lord — is partnership signified? State briefly.)
 
-**Current Dasha**:
-- Mahadasha lord — does it trigger 7th/5th/11th? Marriage verdict [CONFIDENCE]
-- Antardasha lord — immediate relationship conditions [CONFIDENCE]
+Then walk through timing:
 
-**Primary marriage window** — which dasha combination creates it, approximate dates [CONFIDENCE]
+**Right now** — What does your current dasha period mean for your love life?
+- Current Mahadasha: what relationship theme does this period carry? Until when?
+- Current Antardasha: what does it activate right now for you emotionally or romantically?
+- Current Pratyantar + Sookshma: what is the precise current window?
 
-**Transits** (use gochar data):
-- Jupiter transit — natal house, marriage support or neutral
-- Saturn transit — delays or maturity in relationships
+**Upcoming windows** — The next 1–2 Antardashas: what each means for your relationship life, approximate dates.
 
-**Best upcoming window** combining dasha + transit.
+**Transits right now** — Jupiter and Saturn's current positions relative to your 7th house. Do they support or delay partnership?
 
-End with: **Bottom line:** [timing verdict in 1–2 sentences]`,
+**Your most likely marriage/partnership window** — the dasha + transit combination most aligned with a serious relationship. Give approximate dates. [Confidence: N%]
+
+End with: **In short:** [when and what to expect in your love life, in 1–2 sentences] [Confidence: N%]`,
       },
     ],
     wealth: [
       {
         id: 'w1',
-        title: '1. Wealth Signature',
-        prompt: `TOPIC: Wealth and finances ONLY. Do not mention career ambitions, marriage, or health.
+        title: '1. Your Relationship With Money',
+        prompt: `TOPIC: Wealth, finances, and material life ONLY.
 
-From the chart data, write bullet points covering:
-- **2nd lord** (accumulated wealth) — placement, dignity, wealth implication
-- **11th lord** (income and gains) — placement and earning capacity
-- **Jupiter** (wealth karaka, expansion) — sign, house, dignity
-- **Venus** (luxury, assets) — condition and material comfort
-- **9th lord** (fortune, luck) — whether it supports wealth
-- Planets in 2nd or 11th — each with wealth implication (skip if empty)
-- **Primary income style** — employment / business / investment / inheritance based on chart
+Write bullet points that describe how this person relates to money — how they earn, accumulate, spend, and experience financial security.
 
-End with: **Bottom line:** [wealth signature in 1–2 sentences]`,
+Cover:
+- How money tends to flow to you — through employment, entrepreneurship, investments, or inherited channels?
+- Your natural relationship with financial risk — are you a builder, a spender, an investor, or a conservative saver?
+- What your chart says about the scale of wealth you can accumulate over a lifetime
+- Your experience of financial security vs. instability — is this a chart for steady income or fluctuating fortune?
+- One key financial strength and one honest vulnerability in how you handle money
+- Material comforts — whether your chart supports a comfortable, even luxurious, lifestyle
+
+Note the astrological basis briefly in parentheses — the insight about your financial life comes first.
+
+End with: **In short:** [1–2 sentences on your natural financial pattern]`,
       },
       {
         id: 'w2',
-        title: '2. Dhana Yogas',
-        prompt: `TOPIC: Wealth yogas and financial combinations ONLY.
+        title: '2. Wealth Potential & Special Combinations',
+        prompt: `TOPIC: Wealth potential and financial yogas ONLY.
 
-From the chart data, identify:
-- **Dhana Yoga** (2nd + 11th lord connection) — conjunct, aspecting, or exchange? Strength?
-- **Lakshmi Yoga** — 9th lord + Venus conditions — present?
-- Any **Raja Yoga** involving 2nd or 11th lords
-- **Negative combinations** — 2nd lord in 12th, 11th lord in dusthana — state honestly
-- **Overall wealth potential**: Exceptional / Strong / Moderate / Limited
+Write directly to this person about what elevates or limits their financial potential.
 
-End with: **Bottom line:** [wealth potential in one sentence]`,
+Cover:
+- Do you have Dhana Yoga (wealth combination)? What does it mean for your earning capacity in real terms?
+- Is there a Lakshmi Yoga, or connection between fortune (9th) and wealth planets?
+- Any special combinations that indicate above-average financial success — what they mean for you
+- If there are difficult combinations (debilitated wealth planets, 2nd lord in difficult house) — what this actually means in practice, honestly
+- Whether your wealth comes early, mid-life, or later in life
+- Overall wealth potential: Exceptional / Strong / Moderate / Limited — one honest reason
+
+End with: **In short:** [wealth ceiling and key driver in 1–2 sentences]`,
       },
       {
         id: 'w3',
-        title: '3. Timing — Dasha, KP & Transits',
-        prompt: `TOPIC: Financial timing ONLY.
+        title: '3. When — Financial Timing',
+        prompt: `TOPIC: Financial timing ONLY. Synthesize all four layers.
 
-**KP**: H11 sub-lord — houses signified, wealth promised? Active KP financial periods?
+First, establish the promise: Does your chart fundamentally promise financial growth? (Check KP 11th house sub-lord — is wealth signified? State briefly.)
 
-**Current Dasha**:
-- Mahadasha lord — does it activate 2nd/11th/5th/9th? Financial verdict [CONFIDENCE]
-- Antardasha lord — immediate financial conditions [CONFIDENCE]
+Then walk through timing:
 
-**Best accumulation windows** in next 3 years — dasha combinations that activate wealth [CONFIDENCE]
+**Right now** — What does your current dasha period mean for your finances?
+- Current Mahadasha: financial theme of this period — growth, stability, restriction, or rebuilding?
+- Current Antardasha: what it brings for you financially right now?
+- Current Pratyantar + Sookshma: the precise current financial window — days to weeks.
 
-**Transits** (use gochar data):
-- Jupiter transit — which house, financial impact
-- Saturn transit — restriction or structured accumulation
+**Upcoming windows** — Next 1–2 Antardashas: what each means financially, approximate dates.
 
-**One caution period** — when to avoid major financial risk.
+**Transits right now** — Jupiter and Saturn's current positions relative to your wealth houses. Supporting or restricting?
 
-End with: **Bottom line:** [financial timing verdict in 1–2 sentences]`,
+**Best accumulation window in the next 3 years** — the dasha + transit combination most aligned with earning and saving. Give approximate dates. [Confidence: N%]
+
+**One caution period** — when to avoid major financial risk, large investments, or new business ventures.
+
+End with: **In short:** [financial timing verdict — when to invest and when to hold, in 1–2 sentences] [Confidence: N%]`,
       },
     ],
     health: [
       {
         id: 'h1',
-        title: '1. Vitality & Constitution',
-        prompt: `TOPIC: Physical health and constitution ONLY. Do not mention career, relationships, or finances.
+        title: '1. Your Body & Energy',
+        prompt: `TOPIC: Physical health and constitution ONLY.
 
-From the chart data, write bullet points covering:
-- **Lagna lord** (body karaka) — placement, dignity, vitality implication
-- **Sun** (core vitality, immunity) — sign, house, any afflictions
-- **Moon** (mind, fluids, emotional health) — condition and health pattern
-- **Saturn** (chronic conditions, bones, joints) — any health vulnerabilities indicated
-- **6th house sign** — which body systems are naturally stressed
-- **Mars** (inflammation, accidents, surgery risk) — placement note
-- **Rahu/Ketu** — any unusual health patterns
+Write bullet points about this person's body, energy, and health constitution — how they are built, where their natural vitality lies, and what they need to stay well.
 
-Disclaimer: Jyotish health analysis is for self-awareness only. Consult a doctor for medical decisions.
+Cover:
+- Your natural energy level and physical constitution — are you robust, sensitive, high-energy, or prone to depletion?
+- How your mind and emotions affect your body — are they deeply connected for you?
+- The organ systems or body areas that are your natural weak points and need attention
+- What restores your energy — rest, activity, social connection, solitude, nature?
+- Your relationship with sleep, digestion, and physical endurance
+- One specific health pattern that runs through your life — and whether it is something to manage or largely overcome
 
-End with: **Bottom line:** [constitution rating and key vulnerability in 1–2 sentences]`,
+Note the astrological basis briefly in parentheses (e.g., "Moon-Saturn combination") — the human experience of health comes first.
+
+Note: This is for self-awareness and lifestyle guidance. For any medical concern, consult a doctor.
+
+End with: **In short:** [1–2 sentences on your overall vitality and most important health focus]`,
       },
       {
         id: 'h2',
-        title: '2. Disease Patterns',
-        prompt: `TOPIC: Health vulnerabilities and patterns ONLY.
+        title: '2. Health Patterns to Know',
+        prompt: `TOPIC: Health vulnerabilities and protective factors ONLY.
 
-From the chart data:
-- **6th house sign** disease associations — which organ systems are naturally stressed
-- **Classical combinations present** — Moon+Saturn (mental health), Mars+Saturn (inflammation/accidents), Rahu+Sun (unusual conditions) — only mention ones actually present
-- **8th house** — chronic condition or longevity indicator
-- **Mental health** — Moon condition and Mercury condition, brief note
-- **Strongest health protection** — which benefic aspect provides recovery and immunity
+Write directly to this person about the health patterns their chart reveals — honestly but not alarmingly.
 
-Disclaimer: Jyotish analysis only — not medical advice.
+Cover:
+- What body systems need consistent attention in your life (not as disease predictions, but as areas of awareness)
+- Any combination present in your chart that indicates mental/emotional health sensitivity — and what this means for how you should care for yourself
+- If inflammatory, chronic, or accident-prone patterns are indicated, what they actually mean in practice for your lifestyle
+- The most important protective factor in your chart — a benefic influence, strong lagna lord, or natural resilience
+- Whether you are generally a fast healer or a slow but steady one
+- One practical lifestyle recommendation this chart suggests for you
 
-End with: **Bottom line:** [key health vulnerability and protective factor]`,
+Note: Jyotish health analysis is for self-awareness only — not a substitute for medical advice.
+
+End with: **In short:** [key health pattern and most important self-care focus for this person]`,
       },
       {
         id: 'h3',
-        title: '3. Timing — Dasha, KP & Transits',
-        prompt: `TOPIC: Health timing ONLY.
+        title: '3. When — Health Timing',
+        prompt: `TOPIC: Health timing ONLY. Synthesize all four layers.
 
-**KP**: H1 sub-lord — does it signify H6/H8/H12 (challenge) or H1/H5/H11 (strength)?
+First, establish the baseline: Does your chart indicate generally robust health, or is careful self-monitoring important throughout life? (Check KP 1st house sub-lord — does it signify H6/H8/H12 or protective houses?)
 
-**Current Dasha**:
-- Mahadasha lord — health-sensitive or protective? [CONFIDENCE]
-- Antardasha lord — immediate health conditions [CONFIDENCE]
+Then walk through timing:
 
-**Sensitive periods in next 3 years** — when 6th/8th/12th lords activate (list dates briefly)
+**Right now** — What does your current dasha period mean for your health and energy?
+- Current Mahadasha: health theme — vitality, depletion, sensitivity, or renewal?
+- Current Antardasha: what it means for your physical and mental wellbeing right now?
+- Current Pratyantar + Sookshma: the precise current window — anything to be aware of this week or month?
 
-**Transits** (use gochar data):
-- Saturn transit — natal house, health impact
-- Rahu-Ketu — any health-sensitive natal houses affected
+**Upcoming periods** — Next 1–2 Antardashas: what each means for your health, approximate dates.
 
-Disclaimer: Health sensitivity periods indicate vigilance, not certainty of illness. Consult medical professionals.
+**Transits right now** — Saturn and Rahu-Ketu's current positions relative to your health houses. Are they supportive or challenging?
 
-End with: **Bottom line:** [health timing verdict in 1–2 sentences]`,
+**Your next sensitive period** — the dasha + transit combination that warrants extra health attention. Give approximate dates. [Confidence: N%]
+
+Note: Sensitive periods mean heightened awareness, not certainty of illness. They are times to prioritize rest, check-ups, and self-care.
+
+End with: **In short:** [health timing summary — when to be especially mindful of your wellbeing, in 1–2 sentences] [Confidence: N%]`,
       },
     ],
   };
