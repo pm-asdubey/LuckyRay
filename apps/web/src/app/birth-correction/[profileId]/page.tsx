@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronRight, Mic, MicOff, Check, Clock, RefreshCw, ArrowLeft, Plus, CalendarDays } from 'lucide-react';
-import { getProfile, getLatestChart } from '@luckyray/storage';
-import type { Profile, StoredChart, PlanetId } from '@luckyray/shared';
+import {
+  ChevronRight, Mic, MicOff, Check, Clock, RefreshCw,
+  ArrowLeft, Plus, CalendarDays, Hand, Camera, Brain,
+} from 'lucide-react';
+import { getProfile } from '@luckyray/storage';
+import type { Profile } from '@luckyray/shared';
 import { AppShell } from '@/components/layout/app-shell';
 import { Sidebar, BottomNav } from '@/components/layout/nav';
 import { PageLayout, PageHeader, PageContent } from '@/components/layout/page-layout';
@@ -17,79 +20,123 @@ import {
   PLANET_THEMES,
   computeConvergence,
   applySignLikelihoodUpdate,
+  getAgeFilteredEvents,
+  groupEventsByDomain,
+  DOMAIN_LABELS,
+  getNextSubjectiveQuestion,
+  serializeSubjectiveQuestionForAI,
 } from '@luckyray/birth-correction';
 import type {
   CandidateBirthTime,
   GeneratedQuestion,
+  KPEvent,
+  KPDomain,
+  SubjectiveQuestion,
 } from '@luckyray/birth-correction';
 
-// ─── Event-Based Discrimination ───────────────────────────────────────────────
+// ─── Shared Types ─────────────────────────────────────────────────────────────
 
-const EVENT_TYPES: { label: string; planets: PlanetId[] }[] = [
-  { label: 'Marriage or relationship milestone',     planets: ['Venus', 'Jupiter'] },
-  { label: 'Career change or major promotion',       planets: ['Saturn', 'Sun'] },
-  { label: 'Relocation or home change',              planets: ['Moon', 'Mars'] },
-  { label: 'Health event or surgery',                planets: ['Mars', 'Saturn'] },
-  { label: 'Financial milestone (gain or loss)',     planets: ['Jupiter', 'Venus'] },
-  { label: 'Birth of a child',                       planets: ['Jupiter', 'Moon'] },
-  { label: 'Loss of a loved one',                    planets: ['Saturn', 'Ketu'] },
-  { label: 'Education or academic achievement',      planets: ['Mercury', 'Jupiter'] },
-  { label: 'Foreign travel or emigration',           planets: ['Rahu', 'Jupiter'] },
-  { label: 'Legal or government matter',             planets: ['Saturn', 'Rahu'] },
-  { label: 'Spiritual or life-changing experience',  planets: ['Ketu', 'Jupiter'] },
-  { label: 'Accident, injury, or sudden event',      planets: ['Mars', 'Rahu'] },
-  { label: 'Other significant life event',           planets: ['Sun', 'Moon'] },
-];
+interface QuestionHistoryEntry {
+  questionId: string;
+  questionText: string;
+  answerText: string;
+  reasoning?: string;
+}
 
-/**
- * Build a discrimination question by grouping candidates by Ascendant sub-lord.
- * Used when dasha-based discrimination isn't possible (all same-day candidates
- * share the same dasha, but their cuspal sub-lords differ within the window).
- */
+// ─── Helper: Build a discrimination question from sub-lord groups ──────────────
+
 function buildEventQuestion(
-  eventType: string,
+  selectedEventLabels: string[],
   eventDate: string,
   candidates: CandidateBirthTime[],
 ): GeneratedQuestion | null {
   const active = candidates.filter(c => c.probability >= 0.01);
   const groups = new Map<string, string[]>();
-
   for (const c of active) {
     const key = c.ascendantSubLord || 'Unknown';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(c.time);
   }
-
   if (groups.size < 2) return null;
 
   const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
   const year = parseInt(eventDate.slice(0, 4), 10) || new Date().getFullYear();
-  const month = eventDate.slice(5, 7);
+  const month = parseInt(eventDate.slice(5, 7), 10);
   const periodLabel = month ? `${month}/${year}` : String(year);
 
   const questionGroups = sorted.map(([subLord, times]) => ({
-    planets: [subLord as PlanetId],
-    themeLabel: PLANET_THEMES[subLord as PlanetId]?.generalVibe ?? subLord,
+    planets: [subLord] as import('@luckyray/shared').PlanetId[],
+    themeLabel: PLANET_THEMES[subLord as import('@luckyray/shared').PlanetId]?.generalVibe ?? subLord,
     candidateCount: times.length,
     candidateTimes: times,
   }));
 
-  const optionLines = sorted.slice(0, 4).map(([subLord], i) => {
-    const theme = PLANET_THEMES[subLord as PlanetId]?.generalVibe ?? subLord;
-    return `${String.fromCharCode(65 + i)}) ${subLord}: ${theme}`;
-  });
+  const eventSummary = selectedEventLabels.slice(0, 2).join('; ');
 
   return {
     id: `event-${Date.now()}`,
     yearStart: year,
     yearEnd: year,
     groups: questionGroups,
-    questionText: `Around ${periodLabel} you mentioned: "${eventType}"\n\nWhich planetary energy best describes the overall quality of that time?\n\n${optionLines.join('\n')}`,
-    hint: 'Describe the feeling and themes of that period in your own words.',
+    questionText: `Around ${periodLabel} you indicated: ${eventSummary}\n\nWhich planetary energy best describes the overall tone of that period?\n\n${sorted.slice(0, 4).map(([subLord], i) => `${String.fromCharCode(65 + i)}) ${subLord} — ${PLANET_THEMES[subLord as keyof typeof PLANET_THEMES]?.generalVibe ?? subLord}`).join('\n')}`,
+    hint: 'Describe in your own words the feeling, mood, and main themes of that time.',
   };
 }
 
-// ─── Step Components ──────────────────────────────────────────────────────────
+function buildSubjectiveQuestion(
+  sq: SubjectiveQuestion,
+  candidates: CandidateBirthTime[],
+): GeneratedQuestion {
+  const active = candidates.filter(c => c.probability >= 0.01);
+  const groups = new Map<string, string[]>();
+  for (const c of active) {
+    const key = c.ascendantSubLord || 'Unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c.time);
+  }
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+  const questionGroups = sorted.slice(0, 4).map(([subLord, times]) => ({
+    planets: [subLord] as import('@luckyray/shared').PlanetId[],
+    themeLabel: PLANET_THEMES[subLord as import('@luckyray/shared').PlanetId]?.generalVibe ?? subLord,
+    candidateCount: times.length,
+    candidateTimes: times,
+  }));
+
+  return {
+    id: sq.id,
+    yearStart: new Date().getFullYear(),
+    yearEnd: new Date().getFullYear(),
+    groups: questionGroups,
+    questionText: sq.questionText,
+    hint: sq.hint,
+  };
+}
+
+// ─── AI Thinking Card ─────────────────────────────────────────────────────────
+
+function AIThinkingCard({ label }: { label: string }) {
+  return (
+    <div className="border border-amber-500/20 bg-amber-500/5 rounded-xl p-4 flex items-start gap-3">
+      <div className="w-8 h-8 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0 mt-0.5">
+        <Brain className="w-4 h-4 text-amber-400 animate-pulse" />
+      </div>
+      <div>
+        <div className="text-sm text-amber-300/80 font-medium">{label}</div>
+        <div className="flex items-center gap-1 mt-1.5">
+          {[0, 1, 2].map(i => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-amber-400/60 animate-bounce"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Step Indicator ───────────────────────────────────────────────────────────
 
 function StepIndicator({ steps, current }: { steps: string[]; current: number }) {
   return (
@@ -111,11 +158,10 @@ function StepIndicator({ steps, current }: { steps: string[]; current: number })
   );
 }
 
-function ProbabilityBar({ candidates }: { candidates: CandidateBirthTime[] }) {
-  const top5 = [...candidates]
-    .sort((a, b) => b.probability - a.probability)
-    .slice(0, 5);
+// ─── Probability Bar ──────────────────────────────────────────────────────────
 
+function ProbabilityBar({ candidates }: { candidates: CandidateBirthTime[] }) {
+  const top5 = [...candidates].sort((a, b) => b.probability - a.probability).slice(0, 5);
   const topProb = top5[0]?.probability ?? 0;
   const convergence = computeConvergence(candidates);
 
@@ -123,7 +169,7 @@ function ProbabilityBar({ candidates }: { candidates: CandidateBirthTime[] }) {
     <div className="space-y-2">
       <div className="flex items-center justify-between text-xs text-white/40">
         <span>Birth time probability</span>
-        <span>{convergence.effectiveWindowMinutes}min window</span>
+        <span>{convergence.effectiveWindowMinutes}min window · {(convergence.topProbability * 100).toFixed(0)}% confidence</span>
       </div>
       {top5.map((c, i) => (
         <div key={c.time} className="flex items-center gap-3">
@@ -158,7 +204,7 @@ function SeedStep({
   const [roughPeriod, setRoughPeriod] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const roughPeriods: { label: string; center: string; window: number }[] = [
+  const roughPeriods = [
     { label: 'Early morning (midnight–6am)', center: '03:00', window: 180 },
     { label: 'Morning (6am–noon)', center: '09:00', window: 180 },
     { label: 'Afternoon (noon–6pm)', center: '15:00', window: 180 },
@@ -187,9 +233,7 @@ function SeedStep({
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-light text-white mb-1">Starting point</h2>
-        <p className="text-sm text-white/40">
-          How well do you know {profile.name}'s birth time?
-        </p>
+        <p className="text-sm text-white/40">How well do you know {profile.name}'s birth time?</p>
       </div>
 
       <div className="space-y-2">
@@ -197,22 +241,21 @@ function SeedStep({
           <button
             key={option}
             onClick={() => setTimeKnowledge(option)}
-            className={`
-              w-full text-left p-4 rounded-xl border transition-all
-              ${timeKnowledge === option
+            className={`w-full text-left p-4 rounded-xl border transition-all ${
+              timeKnowledge === option
                 ? 'border-amber-500/50 bg-amber-500/10'
-                : 'border-white/8 bg-white/2 hover:bg-white/5'}
-            `}
+                : 'border-white/8 bg-white/2 hover:bg-white/5'
+            }`}
           >
             <div className="font-medium text-sm text-white">
               {option === 'precise' ? 'I know it fairly precisely (±15 min)' :
-               option === 'rough' ? 'I have a rough idea — morning / afternoon' :
-               'I have no idea'}
+               option === 'rough'   ? 'I have a rough idea — morning / afternoon' :
+                                      'I have no idea'}
             </div>
             <div className="text-xs text-white/40 mt-0.5">
               {option === 'precise' ? 'Enter the time below' :
-               option === 'rough' ? 'Select a broad period' :
-               'We\'ll work across the full 24 hours'}
+               option === 'rough'   ? 'Select a broad period' :
+                                      "We'll work across the full 24 hours"}
             </div>
           </button>
         ))}
@@ -236,12 +279,11 @@ function SeedStep({
             <button
               key={p.label}
               onClick={() => setRoughPeriod(p.label)}
-              className={`
-                w-full text-left px-4 py-3 rounded-lg border text-sm transition-all
-                ${roughPeriod === p.label
+              className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ${
+                roughPeriod === p.label
                   ? 'border-amber-500/50 bg-amber-500/10 text-white'
-                  : 'border-white/8 bg-white/2 text-white/60 hover:bg-white/5'}
-              `}
+                  : 'border-white/8 bg-white/2 text-white/60 hover:bg-white/5'
+              }`}
             >
               {p.label}
             </button>
@@ -249,11 +291,7 @@ function SeedStep({
         </div>
       )}
 
-      <Button
-        onClick={handleContinue}
-        disabled={!canContinue || loading}
-        className="w-full"
-      >
+      <Button onClick={handleContinue} disabled={!canContinue || loading} className="w-full">
         {loading ? 'Computing candidates…' : 'Begin'}
         <ChevronRight className="w-4 h-4 ml-2" />
       </Button>
@@ -261,7 +299,7 @@ function SeedStep({
   );
 }
 
-// ─── Step 2: Photo & Voice ────────────────────────────────────────────────────
+// ─── Step 2: Photo, Palm & Voice ──────────────────────────────────────────────
 
 function PhysicalStep({
   candidates,
@@ -270,7 +308,8 @@ function PhysicalStep({
   candidates: CandidateBirthTime[];
   onComplete: (updatedCandidates: CandidateBirthTime[]) => void;
 }) {
-  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
+  const [facePhotoUrl, setFacePhotoUrl] = useState<string | null>(null);
+  const [palmPhotoUrl, setPalmPhotoUrl] = useState<string | null>(null);
   const [additionalFeatures, setAdditionalFeatures] = useState('');
   const [voiceNotes, setVoiceNotes] = useState('');
   const [showVoicePassage, setShowVoicePassage] = useState(false);
@@ -278,18 +317,20 @@ function PhysicalStep({
   const [recordingComplete, setRecordingComplete] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [analyzing, setAnalyzing] = useState(false);
+  const [analyzePhase, setAnalyzePhase] = useState<'face' | 'palm' | 'voice' | null>(null);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const faceInputRef = useRef<HTMLInputElement>(null);
+  const palmInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const addToast = useAppStore(s => s.addToast);
 
-  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoSelect = (setter: (url: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = ev => setPhotoDataUrl(ev.target?.result as string);
+    reader.onload = ev => setter(ev.target?.result as string);
     reader.readAsDataURL(file);
   };
 
@@ -322,6 +363,16 @@ function PhysicalStep({
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
+    setAnalysisResult(null);
+
+    let analysisMode: 'face' | 'palm' | 'both' = 'face';
+    if (facePhotoUrl && palmPhotoUrl) analysisMode = 'both';
+    else if (palmPhotoUrl) analysisMode = 'palm';
+
+    if (facePhotoUrl) setAnalyzePhase('face');
+    else if (palmPhotoUrl) setAnalyzePhase('palm');
+    else if (voiceNotes) setAnalyzePhase('voice');
+
     try {
       const res = await fetch('/api/birth-correction/analyze-physical', {
         method: 'POST',
@@ -336,11 +387,10 @@ function PhysicalStep({
             voiceNotes,
             additionalFeatures,
           },
-          hasPhoto: !!photoDataUrl,
-          clientPhotoAnalysis: photoDataUrl
-            ? `A photo was provided by the user. Base64 image data follows for visual analysis.`
-            : undefined,
-          photoBase64: photoDataUrl ?? undefined,
+          hasPhoto: !!facePhotoUrl,
+          photoBase64: facePhotoUrl ?? undefined,
+          palmPhotoBase64: palmPhotoUrl ?? undefined,
+          analysisMode,
         }),
       });
 
@@ -353,98 +403,122 @@ function PhysicalStep({
 
       setAnalysisResult(data.reasoning);
       const updated = applySignLikelihoodUpdate(candidates, data.signLikelihoods);
-      setTimeout(() => onComplete(updated), 1500);
+      setTimeout(() => onComplete(updated), 1800);
     } catch {
       addToast({ type: 'error', message: 'Analysis failed — skipping this step' });
       onComplete(candidates);
     } finally {
       setAnalyzing(false);
+      setAnalyzePhase(null);
     }
   };
 
-  const canAnalyze = photoDataUrl || voiceNotes || additionalFeatures;
+  const canAnalyze = facePhotoUrl || palmPhotoUrl || voiceNotes || additionalFeatures;
+
+  const analyzeLabel =
+    analyzePhase === 'face' ? 'Analyzing facial features and bearing…' :
+    analyzePhase === 'palm' ? 'Reading the palm — identifying mounts and major lines…' :
+    analyzePhase === 'voice' ? 'Analyzing voice characteristics…' :
+    'Synthesizing physical evidence…';
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-light text-white mb-1">Photo & voice</h2>
+        <h2 className="text-xl font-light text-white mb-1">Photos & voice</h2>
         <p className="text-sm text-white/40">
-          Your photo and voice carry the signature of your rising sign.
-          Both are analyzed locally and never stored.
+          Your face, palm, and voice carry the signature of your rising sign.
+          Photos are analyzed and never stored.
         </p>
       </div>
 
-      {/* Photo capture */}
+      {/* ── Face photo ── */}
       <div className="space-y-3">
-        <div className="text-xs text-white/50 font-medium uppercase tracking-wide">Photo</div>
+        <div className="flex items-center gap-2">
+          <Camera className="w-3.5 h-3.5 text-white/40" />
+          <span className="text-xs text-white/50 font-medium uppercase tracking-wide">Face photo</span>
+        </div>
 
-        {photoDataUrl ? (
+        {facePhotoUrl ? (
           <div className="relative">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photoDataUrl}
-              alt="Your photo"
-              className="w-full max-h-64 object-cover rounded-xl border border-white/10"
-            />
+            <img src={facePhotoUrl} alt="Face photo"
+              className="w-full max-h-56 object-cover rounded-xl border border-white/10" />
             <button
-              onClick={() => { setPhotoDataUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white/70 hover:text-white flex items-center justify-center text-sm"
-            >
-              ×
-            </button>
+              onClick={() => { setFacePhotoUrl(null); if (faceInputRef.current) faceInputRef.current.value = ''; }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 text-white/70 hover:text-white flex items-center justify-center text-sm"
+            >×</button>
           </div>
         ) : (
           <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full h-40 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-2 text-white/30 hover:border-white/20 hover:text-white/50 transition-all group"
+            onClick={() => faceInputRef.current?.click()}
+            className="w-full h-36 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-2 text-white/30 hover:border-white/20 hover:text-white/50 transition-all group"
           >
-            <div className="w-10 h-10 rounded-full bg-white/5 group-hover:bg-white/8 flex items-center justify-center transition-colors">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </div>
-            <span className="text-sm">Take photo or upload</span>
-            <span className="text-xs">Clear front-facing, good lighting</span>
+            <Camera className="w-5 h-5" />
+            <span className="text-sm">Take or upload a face photo</span>
+            <span className="text-xs">Clear front-facing, natural light</span>
           </button>
         )}
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="user"
-          className="hidden"
-          onChange={handlePhotoSelect}
-        />
-
+        <input ref={faceInputRef} type="file" accept="image/*" capture="user" className="hidden"
+          onChange={handlePhotoSelect(setFacePhotoUrl)} />
         <p className="text-xs text-white/25 leading-relaxed">
-          The AI looks for structural facial features — face shape, eye character,
-          complexion, and bearing — to assess which rising signs are more likely.
-          On mobile, this opens your front camera directly.
+          The AI assesses facial structure, eye character, complexion, and bearing to score each rising sign.
         </p>
       </div>
 
-      {/* Additional notes */}
+      {/* ── Palm photo ── */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Hand className="w-3.5 h-3.5 text-white/40" />
+          <span className="text-xs text-white/50 font-medium uppercase tracking-wide">Palm photo</span>
+          <span className="text-xs text-amber-500/50 ml-1">— powerful for sub-lord identification</span>
+        </div>
+
+        {palmPhotoUrl ? (
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={palmPhotoUrl} alt="Palm photo"
+              className="w-full max-h-56 object-cover rounded-xl border border-white/10" />
+            <button
+              onClick={() => { setPalmPhotoUrl(null); if (palmInputRef.current) palmInputRef.current.value = ''; }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 text-white/70 hover:text-white flex items-center justify-center text-sm"
+            >×</button>
+          </div>
+        ) : (
+          <button
+            onClick={() => palmInputRef.current?.click()}
+            className="w-full h-36 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-2 text-white/30 hover:border-white/20 hover:text-white/50 transition-all group"
+          >
+            <Hand className="w-5 h-5" />
+            <span className="text-sm">Photo of your dominant hand</span>
+            <span className="text-xs">Palm facing up, fingers slightly spread</span>
+          </button>
+        )}
+        <input ref={palmInputRef} type="file" accept="image/*" capture="environment" className="hidden"
+          onChange={handlePhotoSelect(setPalmPhotoUrl)} />
+        <p className="text-xs text-white/25 leading-relaxed">
+          The AI reads the dominant mount (Jupiter, Saturn, Venus, etc.) to identify which planetary energy
+          shapes your Ascendant — this is a classical KP technique.
+        </p>
+      </div>
+
+      {/* ── Additional appearance notes ── */}
       <div>
         <label className="text-xs text-white/50 block mb-1.5">Additional appearance notes (optional)</label>
         <textarea
           value={additionalFeatures}
           onChange={e => setAdditionalFeatures(e.target.value)}
-          placeholder="e.g. very expressive eyes, often told I look younger than my age, prominent jawline, graceful hands..."
+          placeholder="e.g. very expressive eyes, often told I look younger than my age, prominent jawline, graceful hands…"
           rows={2}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/50 resize-none"
         />
       </div>
 
-      {/* Voice recording */}
+      {/* ── Voice recording ── */}
       <div className="border border-white/8 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-medium text-white">Voice recording</div>
-            <div className="text-xs text-white/40">How you speak reveals your rising sign's planetary influence</div>
+            <div className="text-xs text-white/40">How you speak reveals the planetary influence on your rising sign</div>
           </div>
           <button
             onClick={() => setShowVoicePassage(v => !v)}
@@ -463,8 +537,7 @@ function PhysicalStep({
             <div className="mt-3 space-y-1">
               {VOICE_READING_INSTRUCTIONS.map((inst, i) => (
                 <div key={i} className="text-xs text-white/30 flex items-start gap-2">
-                  <span className="text-amber-500/50 shrink-0">·</span>
-                  {inst}
+                  <span className="text-amber-500/50 shrink-0">·</span>{inst}
                 </div>
               ))}
             </div>
@@ -492,9 +565,7 @@ function PhysicalStep({
               <button
                 onClick={() => { setRecordingComplete(false); setRecordingSeconds(0); }}
                 className="text-white/30 hover:text-white/60 ml-2"
-              >
-                <RefreshCw className="w-3 h-3" />
-              </button>
+              ><RefreshCw className="w-3 h-3" /></button>
             </div>
           )}
         </div>
@@ -504,14 +575,19 @@ function PhysicalStep({
           <input
             value={voiceNotes}
             onChange={e => setVoiceNotes(e.target.value)}
-            placeholder="e.g. soft and measured, naturally loud, fast talker, monotone, sing-song..."
+            placeholder="e.g. soft and measured, naturally loud, fast talker, monotone, sing-song…"
             className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/50"
           />
         </div>
       </div>
 
-      {analysisResult && (
+      {/* AI thinking indicator */}
+      {analyzing && <AIThinkingCard label={analyzeLabel} />}
+
+      {/* Analysis result */}
+      {analysisResult && !analyzing && (
         <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-sm text-white/70 leading-relaxed">
+          <div className="text-xs text-amber-500/60 font-medium mb-1 uppercase tracking-wide">AI interpretation</div>
           {analysisResult}
         </div>
       )}
@@ -530,7 +606,89 @@ function PhysicalStep({
   );
 }
 
-// ─── Step 3: Interview (AI-Driven Questions) ──────────────────────────────────
+// ─── KP Event Checklist ───────────────────────────────────────────────────────
+
+function KPEventChecklist({
+  eventDate,
+  birthYear,
+  selectedIds,
+  eventDetails,
+  onToggle,
+  onDetailChange,
+}: {
+  eventDate: string;
+  birthYear: number;
+  selectedIds: string[];
+  eventDetails: Record<string, string>;
+  onToggle: (id: string) => void;
+  onDetailChange: (id: string, text: string) => void;
+}) {
+  if (!eventDate) return null;
+  const year = parseInt(eventDate.slice(0, 4), 10);
+  if (!year) return null;
+
+  const filtered = getAgeFilteredEvents(year, birthYear);
+  const grouped = groupEventsByDomain(filtered);
+  const age = year - birthYear;
+
+  return (
+    <div className="space-y-4">
+      <div className="text-xs text-white/30 italic">
+        During {year} ({profile_age_label(age)}) — select everything that happened:
+      </div>
+      {(Object.entries(grouped) as [KPDomain, KPEvent[]][]).map(([domain, events]) => (
+        <div key={domain} className="space-y-1.5">
+          <div className="text-xs text-white/40 font-medium uppercase tracking-wide">
+            {DOMAIN_LABELS[domain]}
+          </div>
+          {events.map(ev => (
+            <div key={ev.id}>
+              <button
+                type="button"
+                onClick={() => onToggle(ev.id)}
+                className={`w-full text-left flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                  selectedIds.includes(ev.id)
+                    ? 'border-amber-500/40 bg-amber-500/8 text-white'
+                    : 'border-white/6 bg-white/2 text-white/55 hover:bg-white/5 hover:text-white/70'
+                }`}
+              >
+                <div className={`w-4 h-4 rounded border shrink-0 mt-0.5 flex items-center justify-center transition-all ${
+                  selectedIds.includes(ev.id) ? 'bg-amber-500 border-amber-500' : 'border-white/20'
+                }`}>
+                  {selectedIds.includes(ev.id) && <Check className="w-2.5 h-2.5 text-black" />}
+                </div>
+                <span className="text-sm leading-snug">{ev.label}</span>
+              </button>
+
+              {selectedIds.includes(ev.id) && ev.followUp && (
+                <div className="ml-7 mt-1.5">
+                  <input
+                    type="text"
+                    value={eventDetails[ev.id] ?? ''}
+                    onChange={e => onDetailChange(ev.id, e.target.value)}
+                    placeholder={ev.followUp}
+                    className="w-full bg-white/3 border border-white/8 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/25 focus:outline-none focus:border-amber-500/30"
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function profile_age_label(age: number): string {
+  if (age < 1) return 'shortly after birth';
+  if (age === 1) return '1 year old';
+  return `${age} years old`;
+}
+
+// ─── Step 3: Interview ────────────────────────────────────────────────────────
+
+const MAX_QUESTIONS = 20;
+const SUBJECTIVE_INTERVAL = 3; // ask a subjective question every N period questions
 
 function InterviewStep({
   candidates,
@@ -544,25 +702,49 @@ function InterviewStep({
   onComplete: () => void;
 }) {
   const [currentQuestion, setCurrentQuestion] = useState<GeneratedQuestion | null>(null);
+  const [currentSubjective, setCurrentSubjective] = useState<SubjectiveQuestion | null>(null);
   const [questionLoading, setQuestionLoading] = useState(false);
   const [dashaQuestionsExhausted, setDashaQuestionsExhausted] = useState(false);
   const [answerText, setAnswerText] = useState('');
   const [scoring, setScoring] = useState(false);
   const [questionsAsked, setQuestionsAsked] = useState<GeneratedQuestion[]>([]);
+  const [subjectiveAskedIds, setSubjectiveAskedIds] = useState<string[]>([]);
+  const [questionHistory, setQuestionHistory] = useState<QuestionHistoryEntry[]>([]);
   const [questionsAnswered, setQuestionsAnswered] = useState(0);
+  const [periodQuestionsCount, setPeriodQuestionsCount] = useState(0);
   const [lastReasoning, setLastReasoning] = useState<string | null>(null);
   const [convergence, setConvergence] = useState(computeConvergence(candidates));
+  const [scaleValue, setScaleValue] = useState<number | null>(null);
 
-  // Event entry form state
-  const [eventType, setEventType] = useState('');
+  // Event checklist state
   const [eventDate, setEventDate] = useState('');
-  const [eventDescription, setEventDescription] = useState('');
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
+  const [eventDetails, setEventDetails] = useState<Record<string, string>>({});
+  const [eventFreeText, setEventFreeText] = useState('');
 
   const addToast = useAppStore(s => s.addToast);
   const currentCandidatesRef = useRef(candidates);
   currentCandidatesRef.current = candidates;
 
-  const loadNextDashaQuestion = async (currentCandidates: CandidateBirthTime[], asked: GeneratedQuestion[]) => {
+  const shouldAskSubjective = useCallback((periodCount: number) => {
+    return periodCount > 0 && periodCount % SUBJECTIVE_INTERVAL === 0;
+  }, []);
+
+  const loadNextDashaQuestion = useCallback(async (
+    currentCandidates: CandidateBirthTime[],
+    asked: GeneratedQuestion[],
+    periodCount: number,
+  ) => {
+    // Alternate: every SUBJECTIVE_INTERVAL period questions, ask a subjective one
+    if (shouldAskSubjective(periodCount)) {
+      const sq = getNextSubjectiveQuestion(subjectiveAskedIds);
+      if (sq) {
+        setCurrentSubjective(sq);
+        setCurrentQuestion(null);
+        return;
+      }
+    }
+
     setQuestionLoading(true);
     try {
       const res = await fetch('/api/birth-correction/next-question', {
@@ -576,21 +758,34 @@ function InterviewStep({
       };
       setCurrentQuestion(data.question);
       setConvergence(data.convergence);
+      setCurrentSubjective(null);
       if (!data.question) setDashaQuestionsExhausted(true);
     } catch {
       setDashaQuestionsExhausted(true);
     } finally {
       setQuestionLoading(false);
     }
-  };
+  }, [birthYear, shouldAskSubjective, subjectiveAskedIds]);
 
   useEffect(() => {
-    loadNextDashaQuestion(candidates, []);
+    loadNextDashaQuestion(candidates, [], 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const submitQuestion = async (question: GeneratedQuestion, freeText: string) => {
+  const submitQuestion = async (
+    question: GeneratedQuestion,
+    freeText: string,
+    opts: {
+      isSubjective?: boolean;
+      subjectiveContext?: string;
+      sqId?: string;
+      selectedEventIds?: string[];
+      eventDetails?: Record<string, string>;
+    } = {},
+  ) => {
+    if (!freeText.trim()) return;
     setScoring(true);
+
     try {
       const res = await fetch('/api/birth-correction/score-answer', {
         method: 'POST',
@@ -599,33 +794,68 @@ function InterviewStep({
           question,
           answer: { questionId: question.id, freeText },
           candidates: currentCandidatesRef.current,
+          questionHistory,
+          selectedEventIds: opts.selectedEventIds ?? [],
+          eventDetails: opts.eventDetails ?? {},
+          isSubjective: opts.isSubjective ?? false,
+          subjectiveContext: opts.subjectiveContext ?? '',
         }),
       });
+
       const data = await res.json() as {
         result: { reasoning: string; confidence: number };
         updatedCandidates: CandidateBirthTime[];
       };
 
-      setLastReasoning(data.result.reasoning);
+      const reasoning = data.result.reasoning;
+      setLastReasoning(reasoning);
       onUpdate(data.updatedCandidates);
+
+      // Store Q&A in history
+      const historyEntry: QuestionHistoryEntry = {
+        questionId: question.id,
+        questionText: question.questionText.slice(0, 200),
+        answerText: freeText.slice(0, 300),
+        reasoning,
+      };
+      setQuestionHistory(prev => [...prev, historyEntry]);
 
       const newAsked = [...questionsAsked, question];
       setQuestionsAsked(newAsked);
       setQuestionsAnswered(q => q + 1);
       setAnswerText('');
-      setCurrentQuestion(null);
-      setEventType('');
+      setScaleValue(null);
       setEventDate('');
-      setEventDescription('');
+      setSelectedEventIds([]);
+      setEventDetails({});
+      setEventFreeText('');
+      setCurrentQuestion(null);
+      setCurrentSubjective(null);
+
+      if (opts.sqId) {
+        setSubjectiveAskedIds(prev => [...prev, opts.sqId!]);
+      }
 
       const newConvergence = computeConvergence(data.updatedCandidates);
       setConvergence(newConvergence);
 
-      // Try loading next dasha question; if exhausted, stay in event-entry mode
-      if (!newConvergence.hasConverged && !dashaQuestionsExhausted) {
-        await loadNextDashaQuestion(data.updatedCandidates, newAsked);
-      } else if (!newConvergence.hasConverged) {
-        setDashaQuestionsExhausted(true);
+      const newPeriodCount = opts.isSubjective ? periodQuestionsCount : periodQuestionsCount + 1;
+      if (!opts.isSubjective) setPeriodQuestionsCount(newPeriodCount);
+
+      // Keep asking until converged (85% confidence, ≤15 min window) or question limit reached
+      const reachedLimit = questionsAnswered + 1 >= MAX_QUESTIONS;
+      if (!newConvergence.hasConverged && !reachedLimit) {
+        if (!dashaQuestionsExhausted) {
+          await loadNextDashaQuestion(data.updatedCandidates, newAsked, newPeriodCount);
+        } else {
+          // Stay in event-entry mode; optionally queue a subjective question
+          if (shouldAskSubjective(newPeriodCount)) {
+            const sq = getNextSubjectiveQuestion(
+              opts.sqId ? [...subjectiveAskedIds, opts.sqId] : subjectiveAskedIds,
+            );
+            if (sq) setCurrentSubjective(sq);
+          }
+        }
       }
     } catch {
       addToast({ type: 'error', message: 'Scoring failed — try again' });
@@ -639,20 +869,53 @@ function InterviewStep({
     submitQuestion(currentQuestion, answerText);
   };
 
-  const handleSubmitEvent = () => {
-    if (!eventType || !eventDate) return;
-    const q = buildEventQuestion(eventType, eventDate, currentCandidatesRef.current);
-    if (!q) {
-      // All candidates have the same sub-lord — can't discriminate further
-      addToast({ type: 'info', message: 'All remaining candidates share the same Ascendant sub-lord. Add more events for further refinement.' });
-      return;
-    }
-    const freeText = eventDescription
-      ? `${eventType}. ${eventDescription}`
-      : eventType;
-    submitQuestion(q, freeText);
+  const handleSubmitSubjective = () => {
+    if (!currentSubjective) return;
+    const hasScale = !!currentSubjective.scale;
+    const hasText = !!answerText.trim();
+    if (!hasScale && !hasText) return;
+    if (hasScale && scaleValue === null && !hasText) return;
+
+    const scalePart = (hasScale && scaleValue !== null)
+      ? `Score: ${scaleValue}/5 (${currentSubjective.scale!.lowLabel} → ${currentSubjective.scale!.highLabel}).`
+      : '';
+    const fullAnswer = [scalePart, answerText.trim()].filter(Boolean).join(' ');
+
+    const question = buildSubjectiveQuestion(currentSubjective, currentCandidatesRef.current);
+    submitQuestion(question, fullAnswer, {
+      isSubjective: true,
+      subjectiveContext: serializeSubjectiveQuestionForAI(currentSubjective),
+      sqId: currentSubjective.id,
+    });
   };
 
+  const handleSubmitEvent = () => {
+    if (!eventDate || selectedEventIds.length === 0) return;
+    const selectedEvents = getAgeFilteredEvents(parseInt(eventDate.slice(0, 4), 10), birthYear)
+      .filter(e => selectedEventIds.includes(e.id));
+    const q = buildEventQuestion(selectedEvents.map(e => e.label), eventDate, currentCandidatesRef.current);
+    if (!q) {
+      addToast({ type: 'info', message: 'All remaining candidates share the same sub-lord for this period. Try a different date.' });
+      return;
+    }
+    const freeText = [
+      ...selectedEvents.map(e => e.label),
+      eventFreeText,
+    ].filter(Boolean).join('. ');
+    submitQuestion(q, freeText, { selectedEventIds, eventDetails });
+  };
+
+  const toggleEventId = (id: string) => {
+    setSelectedEventIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const setEventDetail = (id: string, text: string) => {
+    setEventDetails(prev => ({ ...prev, [id]: text }));
+  };
+
+  // ── Converged ──
   if (convergence.hasConverged) {
     return (
       <div className="space-y-6">
@@ -660,10 +923,10 @@ function InterviewStep({
           <div className="w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center mb-4">
             <Check className="w-6 h-6 text-amber-400" />
           </div>
-          <h2 className="text-xl font-light text-white mb-1">Converged</h2>
+          <h2 className="text-xl font-light text-white mb-1">Birth time identified</h2>
           <p className="text-sm text-white/40">
-            Birth time narrowed to a {convergence.effectiveWindowMinutes}-minute window
-            with {(convergence.topProbability * 100).toFixed(0)}% confidence.
+            Converged to a {convergence.effectiveWindowMinutes}-minute window
+            with {(convergence.topProbability * 100).toFixed(0)}% confidence after {questionsAnswered} questions.
           </p>
         </div>
         <ProbabilityBar candidates={candidates} />
@@ -677,36 +940,45 @@ function InterviewStep({
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-xl font-light text-white mb-1">Life event interview</h2>
+        <h2 className="text-xl font-light text-white mb-1">Evidence interview</h2>
         <p className="text-sm text-white/40">
           {dashaQuestionsExhausted
-            ? 'Your birth time is within a single rising sign window. Add specific life events with precise dates to pinpoint the exact sub-lord.'
-            : 'Each question targets the most informative split in your birth time candidates. Answer freely.'}
+            ? 'Adding precise life events narrows the Ascendant sub-lord directly.'
+            : 'Questions target the most informative split in remaining candidates. Answer freely.'}
         </p>
       </div>
 
       <div className="flex items-center gap-3 text-xs text-white/30">
         <span>{questionsAnswered} answered</span>
         <span>·</span>
-        <span>{convergence.effectiveWindowMinutes}min uncertainty window</span>
+        <span>{convergence.effectiveWindowMinutes}min window</span>
+        <span>·</span>
+        <span>{(convergence.topProbability * 100).toFixed(0)}% confidence</span>
         <span>·</span>
         <span>{candidates.filter(c => c.probability >= 0.01).length} candidates</span>
       </div>
 
       {lastReasoning && (
-        <div className="bg-white/3 border border-white/6 rounded-lg px-4 py-3 text-sm text-white/50 italic">
+        <div className="bg-white/3 border border-white/6 rounded-lg px-4 py-3 text-sm text-white/50 italic leading-relaxed">
+          <div className="text-xs text-white/30 font-medium mb-1 not-italic uppercase tracking-wide">AI reasoning</div>
           {lastReasoning}
         </div>
       )}
 
-      {/* ── Dasha-based question (when available) ── */}
-      {questionLoading ? (
+      {/* ── AI thinking during scoring ── */}
+      {scoring && <AIThinkingCard label="Interpreting your answer and updating probabilities…" />}
+
+      {/* ── Loading next dasha question ── */}
+      {questionLoading && !scoring && (
         <div className="space-y-3 animate-pulse">
           <div className="h-4 bg-white/5 rounded w-3/4" />
           <div className="h-4 bg-white/5 rounded w-1/2" />
-          <div className="h-32 bg-white/5 rounded-xl" />
+          <div className="h-28 bg-white/5 rounded-xl" />
         </div>
-      ) : currentQuestion && !dashaQuestionsExhausted ? (
+      )}
+
+      {/* ── Dasha-based question ── */}
+      {!questionLoading && currentQuestion && !scoring && (
         <div className="space-y-4">
           <div className="bg-white/3 border border-white/8 rounded-xl p-5">
             <div className="text-xs text-amber-500/60 font-medium mb-3 tracking-wide uppercase">
@@ -723,7 +995,7 @@ function InterviewStep({
           <textarea
             value={answerText}
             onChange={e => setAnswerText(e.target.value)}
-            placeholder="Describe what this period was like for you. Include specific events, feelings, or changes — the more detail, the more accurate the result."
+            placeholder="Describe what this period was like — specific events, feelings, or changes. The more detail, the more accurate the result."
             rows={4}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/30 resize-none transition-colors"
           />
@@ -734,7 +1006,7 @@ function InterviewStep({
                 const newAsked = [...questionsAsked, currentQuestion];
                 setQuestionsAsked(newAsked);
                 setCurrentQuestion(null);
-                loadNextDashaQuestion(currentCandidatesRef.current, newAsked);
+                loadNextDashaQuestion(currentCandidatesRef.current, newAsked, periodQuestionsCount);
               }}
               variant="ghost"
               className="text-white/30 hover:text-white/50"
@@ -742,83 +1014,168 @@ function InterviewStep({
               Skip
             </Button>
             <Button onClick={handleSubmitDashaAnswer} disabled={!answerText.trim() || scoring} className="flex-1">
-              {scoring
-                ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Analyzing…</>
-                : <>Submit<ChevronRight className="w-4 h-4 ml-2" /></>}
+              Submit <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           </div>
         </div>
-      ) : null}
+      )}
 
-      {/* ── Event-date entry (always shown; primary mode when dasha questions exhausted) ── */}
-      <div className={`border rounded-xl p-5 space-y-4 transition-all ${
-        dashaQuestionsExhausted ? 'border-amber-500/20 bg-amber-500/3' : 'border-white/6 bg-white/2'
-      }`}>
-        <div className="flex items-center gap-2">
-          <CalendarDays className="w-4 h-4 text-amber-400/60" />
-          <span className="text-sm font-medium text-white">Add a life event</span>
-          {dashaQuestionsExhausted && (
-            <span className="text-xs text-amber-400/60 ml-auto">Primary refinement method</span>
+      {/* ── Subjective personality question ── */}
+      {!questionLoading && currentSubjective && !scoring && (
+        <div className="space-y-4">
+          <div className="bg-white/3 border border-white/8 rounded-xl p-5">
+            <div className="text-xs text-amber-500/60 font-medium mb-3 tracking-wide uppercase">
+              About you
+            </div>
+            <p className="text-sm text-white/80 leading-relaxed">
+              {currentSubjective.questionText}
+            </p>
+            <p className="text-xs text-white/30 mt-3 italic">{currentSubjective.hint}</p>
+          </div>
+
+          {/* 1–5 scale for scale questions */}
+          {currentSubjective.scale && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                {[1, 2, 3, 4, 5].map(val => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setScaleValue(val)}
+                    className={`flex-1 h-10 rounded-lg border text-sm font-medium transition-all ${
+                      scaleValue === val
+                        ? 'border-amber-500/60 bg-amber-500/20 text-amber-300'
+                        : 'border-white/10 bg-white/3 text-white/40 hover:bg-white/8 hover:text-white/60'
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center justify-between text-xs text-white/25">
+                <span>{currentSubjective.scale.lowLabel}</span>
+                <span>{currentSubjective.scale.highLabel}</span>
+              </div>
+            </div>
           )}
-        </div>
-        <p className="text-xs text-white/30">
-          Precise dates unlock KP sub-lord matching — the most accurate rectification method.
-          The more specific the date, the more the system can narrow candidates.
-        </p>
 
-        <div>
-          <label className="text-xs text-white/40 block mb-1.5">Event type</label>
-          <select
-            value={eventType}
-            onChange={e => setEventType(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/40"
-          >
-            <option value="">Select an event type…</option>
-            {EVENT_TYPES.map(e => (
-              <option key={e.label} value={e.label}>{e.label}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="text-xs text-white/40 block mb-1.5">Date (precise as possible)</label>
-          <input
-            type="date"
-            value={eventDate}
-            onChange={e => setEventDate(e.target.value)}
-            max={new Date().toISOString().slice(0, 10)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/40"
-          />
-        </div>
-
-        <div>
-          <label className="text-xs text-white/40 block mb-1.5">Description (optional — any detail helps)</label>
           <textarea
-            value={eventDescription}
-            onChange={e => setEventDescription(e.target.value)}
-            placeholder="e.g. Got married in a small ceremony — it was joyful and felt long-awaited. Partner is 3 years older."
-            rows={3}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/40 resize-none"
+            value={answerText}
+            onChange={e => setAnswerText(e.target.value)}
+            placeholder={currentSubjective.scale
+              ? 'Add any details or context that might help…'
+              : 'Answer honestly — there is no right or wrong. Your natural tendencies matter more than aspirations.'}
+            rows={currentSubjective.scale ? 2 : 3}
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/30 resize-none transition-colors"
           />
-        </div>
 
-        <Button
-          onClick={handleSubmitEvent}
-          disabled={!eventType || !eventDate || scoring}
-          className="w-full"
-        >
-          {scoring
-            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Analyzing…</>
-            : <><Plus className="w-4 h-4 mr-2" />Add event & refine</>}
-        </Button>
-      </div>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => {
+                setSubjectiveAskedIds(prev => [...prev, currentSubjective.id]);
+                setScaleValue(null);
+                setCurrentSubjective(null);
+                if (!dashaQuestionsExhausted) {
+                  loadNextDashaQuestion(currentCandidatesRef.current, questionsAsked, periodQuestionsCount);
+                }
+              }}
+              variant="ghost"
+              className="text-white/30 hover:text-white/50"
+            >
+              Skip
+            </Button>
+            <Button
+              onClick={handleSubmitSubjective}
+              disabled={(currentSubjective.scale ? scaleValue === null && !answerText.trim() : !answerText.trim()) || scoring}
+              className="flex-1"
+            >
+              Submit <ChevronRight className="w-4 h-4 ml-2" />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Life event entry (always available; primary when dasha exhausted) ── */}
+      {!scoring && (
+        <div className={`border rounded-xl p-5 space-y-4 transition-all ${
+          dashaQuestionsExhausted ? 'border-amber-500/20 bg-amber-500/3' : 'border-white/6 bg-white/2'
+        }`}>
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-amber-400/60" />
+            <span className="text-sm font-medium text-white">Add a life event</span>
+            {dashaQuestionsExhausted && (
+              <span className="text-xs text-amber-400/60 ml-auto">Primary refinement method</span>
+            )}
+          </div>
+          <p className="text-xs text-white/30">
+            Select a date and check all events that happened in that year.
+            Precise dates unlock KP sub-lord matching — the most accurate rectification method.
+          </p>
+
+          <div>
+            <label className="text-xs text-white/40 block mb-1.5">Date (as precise as possible)</label>
+            <input
+              type="date"
+              value={eventDate}
+              onChange={e => {
+                setEventDate(e.target.value);
+                setSelectedEventIds([]);
+                setEventDetails({});
+              }}
+              max={new Date().toISOString().slice(0, 10)}
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/40"
+            />
+          </div>
+
+          {eventDate && (
+            <KPEventChecklist
+              eventDate={eventDate}
+              birthYear={birthYear}
+              selectedIds={selectedEventIds}
+              eventDetails={eventDetails}
+              onToggle={toggleEventId}
+              onDetailChange={setEventDetail}
+            />
+          )}
+
+          {selectedEventIds.length > 0 && (
+            <div>
+              <label className="text-xs text-white/40 block mb-1.5">
+                Any additional context about this period? (optional)
+              </label>
+              <textarea
+                value={eventFreeText}
+                onChange={e => setEventFreeText(e.target.value)}
+                placeholder="Overall feeling of the period, what changed, how it resolved…"
+                rows={2}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/40 resize-none"
+              />
+            </div>
+          )}
+
+          <Button
+            onClick={handleSubmitEvent}
+            disabled={!eventDate || selectedEventIds.length === 0 || scoring}
+            className="w-full"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add events & refine
+          </Button>
+        </div>
+      )}
 
       <ProbabilityBar candidates={candidates} />
 
-      {questionsAnswered >= 2 && (
+      {questionsAnswered >= 3 && (
         <Button onClick={onComplete} variant="ghost" className="w-full text-white/40 hover:text-white/60">
-          View results
+          View current results
         </Button>
+      )}
+
+      {questionsAnswered >= MAX_QUESTIONS && (
+        <div className="text-xs text-white/30 text-center">
+          Maximum questions reached. View results below.
+        </div>
       )}
     </div>
   );
@@ -835,36 +1192,24 @@ function ResultStep({
   profile: Profile;
   onApplyTime: (time: string) => void;
 }) {
-  const top3 = [...candidates]
-    .sort((a, b) => b.probability - a.probability)
-    .slice(0, 3);
-
+  const top3 = [...candidates].sort((a, b) => b.probability - a.probability).slice(0, 3);
   const convergence = computeConvergence(candidates);
-  const topCandidate = top3[0];
 
   return (
     <div className="space-y-6">
       <div>
         <div className="text-xs text-amber-500/60 font-medium mb-1 tracking-wide uppercase">Analysis complete</div>
-        <h2 className="text-2xl font-light text-white mb-2">
-          Most probable birth time
-        </h2>
+        <h2 className="text-2xl font-light text-white mb-2">Most probable birth time</h2>
         <p className="text-sm text-white/40">
-          Based on {profile.name}'s physical appearance, voice, and life events.
+          Based on {profile.name}'s physical appearance, palm, voice, and life events.
           Uncertainty window: ±{Math.floor(convergence.effectiveWindowMinutes / 2)} minutes.
         </p>
       </div>
 
       {top3.map((c, i) => (
-        <div
-          key={c.time}
-          className={`
-            border rounded-xl p-5 transition-all
-            ${i === 0
-              ? 'border-amber-500/40 bg-amber-500/5'
-              : 'border-white/8 bg-white/2'}
-          `}
-        >
+        <div key={c.time} className={`border rounded-xl p-5 transition-all ${
+          i === 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-white/8 bg-white/2'
+        }`}>
           <div className="flex items-start justify-between mb-3">
             <div>
               <div className="flex items-center gap-3">
@@ -889,11 +1234,7 @@ function ResultStep({
           </div>
 
           {i === 0 && (
-            <Button
-              onClick={() => onApplyTime(c.time)}
-              className="w-full mt-2"
-              size="sm"
-            >
+            <Button onClick={() => onApplyTime(c.time)} className="w-full mt-2" size="sm">
               Apply this time to {profile.name}'s chart
             </Button>
           )}
@@ -902,7 +1243,7 @@ function ResultStep({
 
       <div className="bg-white/2 border border-white/6 rounded-xl p-4 text-xs text-white/30 leading-relaxed">
         <strong className="text-white/50">Important:</strong> Birth time rectification is probabilistic,
-        not deterministic. The result above represents the most likely range based on the evidence provided.
+        not deterministic. The result represents the most likely range based on the evidence provided.
         Adding more life events with precise dates increases accuracy. A trained KP astrologer should
         verify the rectified time against their own analysis.
       </div>
@@ -912,7 +1253,7 @@ function ResultStep({
 
 // ─── Main Journey Page ────────────────────────────────────────────────────────
 
-const STEPS = ['Starting point', 'Appearance & voice', 'Life events', 'Result'];
+const STEPS = ['Starting point', 'Appearance & voice', 'Evidence interview', 'Result'];
 
 export default function BirthCorrectionPage() {
   const params = useParams();
@@ -920,7 +1261,6 @@ export default function BirthCorrectionPage() {
   const profileId = params.profileId as string;
 
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [chart, setChart] = useState<StoredChart | null>(null);
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState(0);
   const [candidates, setCandidates] = useState<CandidateBirthTime[]>([]);
@@ -933,8 +1273,6 @@ export default function BirthCorrectionPage() {
       const p = await getProfile(profileId);
       if (!p) { router.push('/profiles'); return; }
       setProfile(p);
-      const c = await getLatestChart(profileId);
-      setChart(c ?? null);
       setLoading(false);
     };
     load();
@@ -1005,8 +1343,7 @@ export default function BirthCorrectionPage() {
               onClick={() => router.back()}
               className="flex items-center gap-1.5 text-sm text-white/40 hover:text-white/70 transition-colors"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back
+              <ArrowLeft className="w-4 h-4" /> Back
             </button>
           }
         />
@@ -1039,10 +1376,7 @@ export default function BirthCorrectionPage() {
                 {step === 1 && (
                   <PhysicalStep
                     candidates={candidates}
-                    onComplete={(updated) => {
-                      setCandidates(updated);
-                      setStep(2);
-                    }}
+                    onComplete={(updated) => { setCandidates(updated); setStep(2); }}
                   />
                 )}
 
@@ -1063,13 +1397,6 @@ export default function BirthCorrectionPage() {
                   />
                 )}
               </>
-            )}
-
-            {/* ProbabilityBar is rendered inside PhysicalStep and InterviewStep directly */}
-            {step === 1 && candidates.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-white/5">
-                <ProbabilityBar candidates={candidates} />
-              </div>
             )}
           </div>
         </PageContent>

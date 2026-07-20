@@ -32,3 +32,24 @@ export {
   applySignLikelihoodUpdate,
 } from './candidates';
 export { findBestDiscriminatingPeriod, estimateInformationGain } from './discriminator';
+export {
+  KP_EVENTS,
+  DOMAIN_LABELS,
+  getAgeFilteredEvents,
+  groupEventsByDomain,
+  serializeSelectedEventsForAI,
+} from './kp-events';
+export type { KPEvent, KPDomain } from './kp-events';
+export {
+  PALM_MOUNTS,
+  MAJOR_LINES,
+  HAND_SHAPES,
+  serializePalmistryRAG,
+} from './palmistry-rag';
+export {
+  SUBJECTIVE_QUESTIONS,
+  SUBJECTIVE_QUESTION_COUNT,
+  getNextSubjectiveQuestion,
+  serializeSubjectiveQuestionForAI,
+} from './subjective-questions';
+export type { SubjectiveQuestion } from './subjective-questions';

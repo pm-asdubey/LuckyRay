@@ -112,8 +112,13 @@ export function computeConvergence(candidates: CandidateBirthTime[]): {
   }
   const effectiveWindowMinutes = count * INTERVAL_MINUTES;
 
+  // Convergence: top candidate holds ≥85% probability AND the 80%-mass window
+  // is ≤15 minutes. This corresponds to the AI being confident to within
+  // roughly ±7 minutes — a meaningful clinical threshold for KP rectification.
+  const converged = top.probability >= 0.85 && effectiveWindowMinutes <= 15;
+
   return {
-    hasConverged: top.probability >= 0.60,
+    hasConverged: converged,
     topProbability: top.probability,
     effectiveWindowMinutes,
   };
