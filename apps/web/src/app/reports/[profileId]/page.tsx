@@ -352,12 +352,20 @@ End with: **In short:** [health timing summary — when to be especially mindful
   return defs[type];
 }
 
-// ─── Stream engine — bulletproof with 429 handling ────────────────────────────
+// ─── Stream engine ────────────────────────────────────────────────────────────
 
 interface StreamResult {
   outcome: 'done' | 'error' | 'aborted';
   content: string;
 }
+
+// Hard ceiling for this model on NVIDIA's platform is 4096.
+// We use 4000 to leave minimal headroom and maximise single-pass completion.
+const SECTION_MAX_TOKENS = 4000;
+// Max continuation passes — timing sections are dense, so allow up to 6
+const MAX_PASSES = 6;
+// Attempts per pass on transient failure (rate limits, network blips)
+const MAX_ATTEMPTS = 3;
 
 function parseSSELines(buf: string): { content: string; finishReason: string | null; remaining: string } {
   let content = '';
@@ -380,6 +388,7 @@ function parseSSELines(buf: string): { content: string; finishReason: string | n
   return { content, finishReason, remaining };
 }
 
+/** Stream one section, with auto-continuation when the model hits its token limit. */
 async function streamSection(
   sectionDef: SectionDef,
   chartContext: import('@luckyray/shared').ChartContext,
@@ -387,27 +396,28 @@ async function streamSection(
   onChunk: (text: string, waitingMsg?: string) => void,
   language: 'en' | 'hi' = 'en',
 ): Promise<StreamResult> {
-  const MAX_PASSES = 4;
-  const MAX_ATTEMPTS_PER_PASS = 3;
   let fullContent = '';
-  let conversationMessages: { role: 'user' | 'assistant'; content: string }[] = [];
 
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     if (signal.aborted) return { outcome: 'aborted', content: fullContent };
 
+    // On continuation, send the full content generated so far as the assistant's
+    // prior response. The model sees exactly what was written and continues from there.
+    // This avoids context bloat from accumulating all prior continuation messages.
     const messages: { role: 'user' | 'assistant'; content: string }[] =
       pass === 0
         ? [{ role: 'user', content: sectionDef.prompt }]
         : [
-            ...conversationMessages,
-            { role: 'user', content: 'Continue from exactly where you stopped. Do not repeat anything already written.' },
+            { role: 'user', content: sectionDef.prompt },
+            { role: 'assistant', content: fullContent },
+            { role: 'user', content: 'You were cut off. Continue from exactly where you stopped — do not repeat anything already written. Complete all remaining bullet points and the "In short:" conclusion.' },
           ];
 
-    let finishReason: string | null = null;
     let passContent = '';
+    let finishReason: string | null = null;
     let passSucceeded = false;
 
-    for (let attempt = 0; attempt < MAX_ATTEMPTS_PER_PASS; attempt++) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       if (signal.aborted) return { outcome: 'aborted', content: fullContent };
 
       try {
@@ -421,27 +431,27 @@ async function streamSection(
             systemPromptOverride: REPORT_SYSTEM_PROMPT,
             model: 'meta/llama-3.1-70b-instruct',
             stream: true,
-            maxTokens: 2048,
+            maxTokens: SECTION_MAX_TOKENS,
             language,
           }),
         });
 
         if (!response.ok) {
-          const status = response.status;
-          if (status === 429) {
-            const retryAfterHeader = response.headers.get('retry-after');
-            const waitSec = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 45 + attempt * 30;
-            onChunk(fullContent, `Rate limited — waiting ${waitSec}s…`);
+          if (response.status === 429) {
+            const after = response.headers.get('retry-after');
+            // Honour the server's retry-after header; fall back to 30s
+            const waitSec = after ? Math.min(parseInt(after, 10), 60) : 30;
+            onChunk(fullContent, `Rate limited — resuming in ${waitSec}s…`);
             await new Promise(r => setTimeout(r, waitSec * 1000));
             continue;
           }
-          if (status >= 500) {
-            const waitSec = 10 + attempt * 15;
-            onChunk(fullContent, `Server error (${status}) — retrying in ${waitSec}s…`);
+          if (response.status >= 500) {
+            const waitSec = 8 + attempt * 10;
+            onChunk(fullContent, `Server error — retrying in ${waitSec}s…`);
             await new Promise(r => setTimeout(r, waitSec * 1000));
             continue;
           }
-          throw new Error(`HTTP ${status}`);
+          throw new Error(`HTTP ${response.status}`);
         }
 
         const reader = response.body?.getReader();
@@ -459,13 +469,15 @@ async function streamSection(
             buf += decoder.decode(value, { stream: true });
             const { content, finishReason: fr, remaining } = parseSSELines(buf);
             buf = remaining;
-            if (content) { passContent += content; fullContent += content; onChunk(fullContent); }
+            if (content) {
+              passContent += content;
+              onChunk(fullContent + passContent);
+            }
             if (fr) finishReason = fr;
           }
-          // flush leftover
           if (buf.trim()) {
             const { content, finishReason: fr } = parseSSELines(buf + '\n\n');
-            if (content) { passContent += content; fullContent += content; onChunk(fullContent); }
+            if (content) { passContent += content; onChunk(fullContent + passContent); }
             if (fr) finishReason = fr;
           }
         } finally {
@@ -476,229 +488,221 @@ async function streamSection(
         break;
       } catch (err) {
         if (signal.aborted) return { outcome: 'aborted', content: fullContent };
-        const waitSec = 15 + attempt * 20;
-        onChunk(fullContent, `Connection error — retrying in ${waitSec}s…`);
+        const waitSec = 8 + attempt * 12;
+        onChunk(fullContent, `Connection issue — retrying in ${waitSec}s…`);
         await new Promise(r => setTimeout(r, waitSec * 1000));
       }
     }
 
     if (signal.aborted) return { outcome: 'aborted', content: fullContent };
+
     if (!passSucceeded) {
-      return fullContent.length > 0 ? { outcome: 'done', content: fullContent } : { outcome: 'error', content: fullContent };
+      // All attempts failed for this pass
+      return fullContent.length > 80
+        ? { outcome: 'done', content: fullContent }
+        : { outcome: 'error', content: fullContent };
     }
 
-    if (finishReason !== 'length' || !passContent) {
-      return { outcome: 'done', content: fullContent };
-    }
+    fullContent += passContent;
+    onChunk(fullContent);
 
-    // Continue: build conversation context for next pass
-    if (pass === 0) {
-      conversationMessages = [
-        { role: 'user', content: sectionDef.prompt },
-        { role: 'assistant', content: passContent },
-      ];
-    } else {
-      conversationMessages = [
-        ...conversationMessages,
-        { role: 'user', content: 'Continue from exactly where you stopped.' },
-        { role: 'assistant', content: passContent },
-      ];
-    }
+    // Determine if the section is genuinely complete:
+    // • Model stopped naturally (finish_reason != 'length') → always done
+    // • "In short:" conclusion present → done even if we hit the length limit
+    //   (the model wrote the closing summary, so the content is logically complete)
+    const hitLimit = finishReason === 'length';
+    const hasConclusion = /\*\*In short:\*\*|In short:/i.test(fullContent);
 
-    onChunk(fullContent, `Continuing…`);
-    await new Promise(r => setTimeout(r, 1500));
+    if (!hitLimit || hasConclusion) return { outcome: 'done', content: fullContent };
+
+    // Model was cut off mid-response — continue on the next pass
+    onChunk(fullContent, 'Continuing…');
+    await new Promise(r => setTimeout(r, 700));
   }
 
+  // Exhausted all passes — return what we have
   return { outcome: 'done', content: fullContent };
 }
 
-// ─── PDF Generator ────────────────────────────────────────────────────────────
+// ─── Print / PDF Export ───────────────────────────────────────────────────────
+// Uses browser-native print instead of jsPDF so that Unicode (including
+// Devanagari) is rendered correctly by the system's PDF engine.
 
-async function downloadAsPDF(
+function markdownToHtml(text: string): string {
+  return text
+    // Confidence badge
+    .replace(/\[Confidence:\s*(\d+)%\]/g,
+      '<span class="conf">Confidence: $1%</span>')
+    // h2 / h3
+    .replace(/^##\s+(.+)$/gm, '<h3>$1</h3>')
+    .replace(/^#\s+(.+)$/gm,  '<h2>$1</h2>')
+    // bold / italic
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g,     '<em>$1</em>')
+    // bullet points — collect into <ul> blocks after
+    .replace(/^[-*]\s+(.+)$/gm, '<li>$1</li>')
+    // paragraph breaks
+    .replace(/\n\n+/g, '</p><p>')
+    .replace(/\n/g,    '<br>');
+}
+
+/**
+ * Opens a styled print window that supports all Unicode scripts (including
+ * Devanagari). The browser's PDF engine respects system fonts and the
+ * @import Google Fonts declaration loaded in the window, so Hindi text
+ * renders correctly when the user saves to PDF via the print dialog.
+ */
+function printReport(
   reportType: ReportType,
   sections: GeneratedSection[],
   profileName: string,
 ) {
-  const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-  const PAGE_W = 210;
-  const PAGE_H = 297;
-  const MARGIN = 18;
-  const CONTENT_W = PAGE_W - MARGIN * 2;
-  let y = MARGIN;
-
   const meta = REPORT_META[reportType];
-
-  // Dark background for the first page
-  doc.setFillColor(5, 3, 14);
-  doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
-
-  // ── Page helpers ───────────────────────────────────────────────────────────
-
-  const ensureSpace = (needed: number) => {
-    if (y + needed > PAGE_H - MARGIN) {
-      doc.addPage();
-      // Dark background on new page
-      doc.setFillColor(5, 3, 14);
-      doc.rect(0, 0, PAGE_W, PAGE_H, 'F');
-      y = MARGIN;
-    }
-  };
-
-  // ── Logo drawing (vector palm + ray) ─────────────────────────────────────
-
-  const drawLogo = (x: number, baseY: number, sz: number) => {
-    const s = sz / 64;
-    doc.setDrawColor(124, 58, 237);
-    doc.setLineWidth(0.3 * s * 4);
-
-    // Life line
-    doc.setDrawColor(124, 58, 237);
-    const lx = x + 24 * s; const ly = baseY + 16 * s;
-    doc.lines([[(-4)*s, (8)*s], [(-1)*s, (8)*s], [(3)*s, (14)*s]], lx, ly);
-
-    // Heart line
-    doc.lines([[(7)*s, (-4)*s], [(12)*s, 0], [(10)*s, (2)*s]], x + 17 * s, baseY + 28 * s);
-
-    // Head line
-    doc.lines([[(8)*s, (-2)*s], [(10)*s, 0], [(10)*s, (4)*s]], x + 18 * s, baseY + 34 * s);
-
-    // Fate line
-    doc.setLineWidth(0.4 * s * 4);
-    doc.setDrawColor(124, 58, 237);
-    doc.lines([[0, (-6)*s], [(-1)*s, (-4)*s], [(-1)*s, (-6)*s]], x + 32 * s, baseY + 46 * s);
-
-    // Ray (bold, lighter colour)
-    doc.setLineWidth(0.55 * s * 4);
-    doc.setDrawColor(167, 139, 250);
-    doc.line(x + 31 * s, baseY + 30 * s, x + 32 * s, baseY + 8 * s);
-
-    // Star at apex
-    doc.setFillColor(167, 139, 250);
-    doc.circle(x + 32 * s, baseY + 8 * s, 1.2 * s, 'F');
-  };
-
-  // ── Cover header ──────────────────────────────────────────────────────────
-
-  // Background bar
-  doc.setFillColor(10, 6, 22);
-  doc.rect(0, 0, PAGE_W, 48, 'F');
-
-  // Subtle purple border at base of header
-  doc.setFillColor(124, 58, 237);
-  doc.rect(0, 47.5, PAGE_W, 0.5, 'F');
-
-  // Logo
-  drawLogo(MARGIN, 8, 32);
-
-  // Wordmark
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(13);
-  doc.setTextColor(237, 233, 254); // violet-100
-  doc.text('LuckyRay', MARGIN + 36, 22);
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(7);
-  doc.setTextColor(124, 58, 237);
-  doc.text('लकीरें  —  Lines on your palm', MARGIN + 36, 29);
-
-  // Report title (right side of header)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.setTextColor(237, 233, 254);
-  const titleX = PAGE_W - MARGIN;
-  doc.text(meta.title, titleX, 20, { align: 'right' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(196, 181, 253); // violet-300
-  doc.text(`Jyotish & KP Analysis for ${profileName}`, titleX, 28, { align: 'right' });
-
-  doc.setFontSize(8);
-  doc.setTextColor(109, 40, 217);
-  doc.text(`Generated ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, titleX, 35, { align: 'right' });
-
-  y = 58;
-
-  // ── Sections ──────────────────────────────────────────────────────────────
-
   const done = sections.filter(s => s.status === 'done' && s.content.length > 0);
+  const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  for (const section of done) {
-    ensureSpace(20);
+  const sectionsHtml = done.map(s => {
+    const body = markdownToHtml(s.content);
+    return `
+      <section>
+        <h2>${s.title}</h2>
+        <p>${body}</p>
+      </section>`;
+  }).join('');
 
-    // Section heading
-    doc.setFillColor(10, 6, 22);
-    doc.rect(MARGIN, y, CONTENT_W, 8, 'F');
-    doc.setFillColor(124, 58, 237);
-    doc.rect(MARGIN, y, 2, 8, 'F');
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LuckyRay — ${meta.title} — ${profileName}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(196, 181, 253);
-    doc.text(section.title, MARGIN + 5, y + 5.5);
-    y += 12;
-
-    // Content — strip markdown syntax and render as plain text
-    const text = stripMarkdown(section.content);
-    const lines = doc.splitTextToSize(text, CONTENT_W);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(200, 196, 220);
-
-    for (const line of lines) {
-      ensureSpace(5.5);
-      const isBullet = (line as string).trim().startsWith('•');
-      const indent = isBullet ? MARGIN + 4 : MARGIN;
-      doc.text(line, indent, y);
-      y += 5;
+    body {
+      font-family: 'Inter', 'Noto Sans Devanagari', system-ui, sans-serif;
+      background: #05030e;
+      color: #c8c4dc;
+      font-size: 13px;
+      line-height: 1.75;
+      padding: 40px 48px;
     }
 
-    y += 6;
+    /* ── Header ── */
+    header {
+      border-bottom: 1px solid #2d1b69;
+      padding-bottom: 24px;
+      margin-bottom: 36px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .brand { color: #ede9fe; font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }
+    .brand span { color: #7c3aed; font-size: 11px; font-weight: 400; display: block; margin-top: 2px; }
+    .report-meta { text-align: right; }
+    .report-meta h1 { font-size: 22px; color: #ede9fe; font-weight: 700; }
+    .report-meta p { font-size: 11px; color: #6d28d9; margin-top: 3px; }
 
-    // Section divider
-    ensureSpace(3);
-    doc.setDrawColor(40, 20, 80);
-    doc.setLineWidth(0.2);
-    doc.line(MARGIN, y, MARGIN + CONTENT_W, y);
-    y += 6;
+    /* ── Sections ── */
+    section { margin-bottom: 32px; }
+
+    section h2 {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #a78bfa;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: #0d0920;
+      border-left: 3px solid #7c3aed;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+    }
+
+    section h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #c4b5fd;
+      margin: 14px 0 6px;
+    }
+
+    p { margin-bottom: 10px; }
+
+    strong { color: #ede9fe; font-weight: 600; }
+    em     { color: #c4b5fd; font-style: italic; }
+
+    li {
+      position: relative;
+      padding-left: 16px;
+      margin-bottom: 5px;
+    }
+    li::before { content: '·'; position: absolute; left: 3px; color: #7c3aed; font-weight: 700; }
+
+    .conf {
+      display: inline-block;
+      background: #12082a;
+      color: #a78bfa;
+      border: 1px solid #4c1d95;
+      border-radius: 4px;
+      padding: 1px 7px;
+      font-size: 10.5px;
+      font-weight: 600;
+      margin-left: 4px;
+      vertical-align: middle;
+    }
+
+    /* ── Footer ── */
+    footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid #1e0f40;
+      color: #3b1d6b;
+      font-size: 10px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* ── Print overrides ── */
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      section { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      LuckyRay
+      <span>लकीरें · Lines on your palm</span>
+    </div>
+    <div class="report-meta">
+      <h1>${meta.title}</h1>
+      <p>Jyotish &amp; KP Analysis for ${profileName}</p>
+      <p style="margin-top:4px">${dateStr}</p>
+    </div>
+  </header>
+
+  ${sectionsHtml}
+
+  <footer>
+    <span>LuckyRay · Jyotish &amp; KP Analysis</span>
+    <span>For self-awareness and educational purposes only · Not professional advice</span>
+  </footer>
+
+  <script>
+    // Wait for fonts to load before printing so Devanagari glyphs are present
+    document.fonts.ready.then(() => window.print());
+  </script>
+</body>
+</html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if (!win) {
+    alert('Please allow pop-ups for this page to export the report.');
+    return;
   }
-
-  // ── Footer ────────────────────────────────────────────────────────────────
-
-  const totalPages = (doc as any).internal.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
-    // Ensure dark background on every page (footer always on top)
-    doc.setFillColor(10, 6, 22);
-    doc.rect(0, PAGE_H - 10, PAGE_W, 10, 'F');
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(7);
-    doc.setTextColor(109, 40, 217);
-    doc.text('LuckyRay  ·  लकीरें  ·  Jyotish & KP Analysis', MARGIN, PAGE_H - 4);
-    doc.text(`Page ${i} of ${totalPages}`, PAGE_W - MARGIN, PAGE_H - 4, { align: 'right' });
-    doc.setTextColor(60, 30, 100);
-    doc.text('This report is for self-awareness and educational purposes only. Not professional advice.', MARGIN, PAGE_H - 1);
-  }
-
-  // ── Save ──────────────────────────────────────────────────────────────────
-
-  doc.save(`luckyray-${reportType}-${profileName.replace(/\s+/g, '-').toLowerCase()}.pdf`);
-}
-
-/** Strip common markdown syntax to plain text suitable for PDF rendering */
-function stripMarkdown(text: string): string {
-  return text
-    .replace(/^#{1,6}\s+/gm, '')           // headings
-    .replace(/\*\*(.+?)\*\*/g, '$1')        // bold
-    .replace(/\*(.+?)\*/g, '$1')            // italic
-    .replace(/^[-*]\s+/gm, '• ')           // list items
-    .replace(/`(.+?)`/g, '$1')             // inline code
-    .replace(/\[(.+?)\]\(.+?\)/g, '$1')    // links
-    .replace(/\n{3,}/g, '\n\n')            // excess newlines
-    .trim();
+  win.document.write(html);
+  win.document.close();
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -777,16 +781,19 @@ export default function ReportsPage() {
       const section = sections[i]!;
       const sectionKey = `${reportType}-${i}`;
 
-      const result = await streamSection(
-        section,
-        chartContext,
-        ctrl.signal,
-        (fullText, waitMsg) => {
-
+      // Each section gets up to 2 top-level attempts (the inner streamSection
+      // already retries per-pass up to MAX_ATTEMPTS times). If the first attempt
+      // exhausts all inner retries and still returns error (e.g. sustained
+      // rate-limiting), we wait 30 s and try the full section once more so
+      // nothing is permanently skipped.
+      const makeOnChunk = (isRetry = false) =>
+        (fullText: string, waitMsg?: string) => {
           updateSectionContent(reportType, i, fullText);
           if (waitMsg) {
-            setSectionStatus(prev => ({ ...prev, [sectionKey]: waitMsg }));
-            // Update section to 'waiting' status for UI
+            setSectionStatus(prev => ({
+              ...prev,
+              [sectionKey]: isRetry ? `Retry — ${waitMsg}` : waitMsg,
+            }));
             setReports(prev => ({
               ...prev,
               [reportType]: {
@@ -808,9 +815,30 @@ export default function ReportsPage() {
               },
             }));
           }
-        },
-        language,
-      );
+        };
+
+      let result = await streamSection(section, chartContext, ctrl.signal, makeOnChunk(), language);
+
+      if (result.outcome === 'aborted') break;
+
+      // Section-level retry on outright failure (no content generated)
+      if (result.outcome === 'error') {
+        setSectionStatus(prev => ({ ...prev, [sectionKey]: 'Retrying in 30 s…' }));
+        setReports(prev => ({
+          ...prev,
+          [reportType]: {
+            ...prev[reportType]!,
+            sections: prev[reportType]!.sections.map((s, idx) =>
+              idx === i ? { ...s, status: 'waiting' as SectionStatus } : s,
+            ),
+          },
+        }));
+        await new Promise(r => setTimeout(r, 30000));
+
+        if (!ctrl.signal.aborted) {
+          result = await streamSection(section, chartContext, ctrl.signal, makeOnChunk(true), language);
+        }
+      }
 
       if (result.outcome === 'aborted') break;
 
@@ -827,10 +855,10 @@ export default function ReportsPage() {
       setSectionStatus(prev => ({ ...prev, [sectionKey]: '' }));
 
       if (result.outcome === 'error') {
-        addToast({ type: 'error', message: `Section ${i + 1} failed after all retries.` });
+        addToast({ type: 'error', message: `Section ${i + 1} could not be generated — please try again.` });
       }
 
-      // Pause between sections — 8s base to respect NVIDIA rate limits
+      // Pause between sections to respect NVIDIA rate limits
       if (i < sections.length - 1 && !ctrl.signal.aborted) {
         await new Promise(r => setTimeout(r, 8000));
       }
@@ -852,17 +880,12 @@ export default function ReportsPage() {
     });
   }, []);
 
-  const handleDownloadPDF = useCallback(async (reportType: ReportType) => {
+  const handleDownloadPDF = useCallback((reportType: ReportType) => {
     const state = reports[reportType];
     if (!state || !profile) return;
-    addToast({ type: 'info', message: 'Generating PDF…' });
-    try {
-      await downloadAsPDF(reportType, state.sections, profile.name);
-      addToast({ type: 'success', message: t.reports.download });
-    } catch (e) {
-      addToast({ type: 'error', message: 'PDF generation failed' });
-    }
-  }, [reports, profile, addToast, t]);
+    printReport(reportType, state.sections, profile.name);
+    addToast({ type: 'info', message: 'Print dialog opened — use "Save as PDF" to export.' });
+  }, [reports, profile, addToast]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
