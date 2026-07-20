@@ -150,14 +150,23 @@ export function applyLikelihoodUpdate(
 
 /**
  * Apply an ascendant-sign based likelihood update.
- * Multipliers are per sign; candidates with an eliminated sign get 0.01 weight.
+ *
+ * Uses a DAMPENED multiplier so a single subjective question can never
+ * catastrophically drop a candidate. Formula: 0.4 + 0.6 * likelihood
+ * maps the AI's 0–1 score to a 0.4–1.0 multiplier range.
+ *
+ * This means even the "worst" sign match still retains 40% of its prior
+ * probability — we adjust gently rather than eliminate based on soft evidence.
  */
 export function applySignLikelihoodUpdate(
   candidates: CandidateBirthTime[],
   signLikelihoods: Record<string, number>,
 ): CandidateBirthTime[] {
   const updated = candidates.map(c => {
-    const multiplier = signLikelihoods[c.ascendantSign] ?? 0.1;
+    const raw = signLikelihoods[c.ascendantSign] ?? 0.5;
+    const clamped = Math.max(0, Math.min(1, raw));
+    // Dampen: 0→0.4, 0.5→0.7, 1→1.0 — never wipes out a candidate
+    const multiplier = 0.4 + 0.6 * clamped;
     return { ...c, probability: c.probability * multiplier };
   });
   return normalizeProbabilities(updated);

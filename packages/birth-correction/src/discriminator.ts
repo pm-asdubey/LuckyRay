@@ -54,12 +54,16 @@ export function findBestDiscriminatingPeriod(
   let bestScore = -Infinity;
   let bestPeriod: { startYear: number; endYear: number; groups: Map<string, string[]> } | null = null;
 
-  // Evaluate each possible 2-year window
-  for (let startYear = birthYear + 3; startYear <= currentYear - 1; startYear++) {
+  // Evaluate non-overlapping 3-year windows. Skip any window that shares even
+  // one year with a previously asked question — this prevents the discriminator
+  // from asking about 2005-2007 and then 2006-2008 (which overlaps and feels
+  // like the same question to the user).
+  for (let startYear = birthYear + 3; startYear <= currentYear - 1; startYear += 3) {
     const endYear = Math.min(startYear + 2, currentYear - 1);
 
-    // Skip already-covered windows
-    if (Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i).every(y => coveredYears.has(y))) {
+    // Skip if ANY year in this window was already covered
+    const windowYears = Array.from({ length: endYear - startYear + 1 }, (_, i) => startYear + i);
+    if (windowYears.some(y => coveredYears.has(y))) {
       continue;
     }
 

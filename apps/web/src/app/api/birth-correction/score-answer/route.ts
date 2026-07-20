@@ -153,15 +153,59 @@ export async function POST(req: NextRequest) {
       confidence: number;
       reasoning: string;
       signLikelihoods?: Record<string, number>;
+      subLordLikelihoods?: Record<string, number>;
     };
 
-    const result = buildScoringResult(question, parsed, candidates);
+    let updatedCandidates: CandidateBirthTime[];
 
-    // For subjective questions, also apply sign-level updates if the AI returned them
-    let updatedCandidates = applyLikelihoodUpdate(candidates, result.candidateScores);
-    if (parsed.signLikelihoods && Object.keys(parsed.signLikelihoods).length > 0) {
-      updatedCandidates = applySignLikelihoodUpdate(updatedCandidates, parsed.signLikelihoods);
+    if (isSubjective) {
+      // Subjective questions: sub-lord groups have no meaningful relationship to
+      // personality traits — the group pick would be random noise that hurts more
+      // than it helps. Only apply sign-level update (already dampened in candidates.ts).
+      if (parsed.signLikelihoods && Object.keys(parsed.signLikelihoods).length > 0) {
+        updatedCandidates = applySignLikelihoodUpdate(candidates, parsed.signLikelihoods);
+      } else {
+        updatedCandidates = candidates; // No usable signal — leave unchanged
+      }
+
+      // Build a neutral result for the response
+      const result: AnswerScoringResult = {
+        questionId: question.id,
+        bestMatchGroup: parsed.bestMatchGroup,
+        confidence: parsed.confidence,
+        reasoning: parsed.reasoning,
+        candidateScores: Object.fromEntries(candidates.map(c => [c.time, 1.0])),
+      };
+      return NextResponse.json({ result, updatedCandidates } satisfies ScoreAnswerResponse);
     }
+
+    // Event/dasha questions: apply group-based update only (no sign overlay).
+    // If the AI also returned sub-lord likelihoods, apply those instead of the binary group pick.
+    if (parsed.subLordLikelihoods && Object.keys(parsed.subLordLikelihoods).length > 0) {
+      // Sub-lord-rated event scoring: each candidate's probability is multiplied by the
+      // AI's rating for their ascendant sub-lord. Much more accurate than binary group pick.
+      const subLordMap = parsed.subLordLikelihoods as Record<string, number>;
+      const scoreMap: Record<string, number> = {};
+      for (const c of candidates) {
+        const raw = subLordMap[c.ascendantSubLord] ?? 0.5;
+        const clamped = Math.max(0, Math.min(1, raw));
+        // Dampen: 0→0.35, 0.5→0.675, 1→1.0 — never eliminates a candidate
+        scoreMap[c.time] = 0.35 + 0.65 * clamped;
+      }
+      updatedCandidates = applyLikelihoodUpdate(candidates, scoreMap);
+      const result: AnswerScoringResult = {
+        questionId: question.id,
+        bestMatchGroup: parsed.bestMatchGroup,
+        confidence: parsed.confidence,
+        reasoning: parsed.reasoning,
+        candidateScores: scoreMap,
+      };
+      return NextResponse.json({ result, updatedCandidates } satisfies ScoreAnswerResponse);
+    }
+
+    // Standard group-based scoring for dasha period questions
+    const result = buildScoringResult(question, parsed, candidates);
+    updatedCandidates = applyLikelihoodUpdate(candidates, result.candidateScores);
 
     const responseData: ScoreAnswerResponse = { result, updatedCandidates };
     return NextResponse.json(responseData);
@@ -172,29 +216,67 @@ export async function POST(req: NextRequest) {
 }
 
 function buildPeriodSystemPrompt(themeBlock: string, eventBlock: string, historyBlock: string): string {
-  return `You are a KP Jyotish birth time rectification assistant.
+  const hasEvents = eventBlock.length > 0;
 
-Your task: analyze the user's description of a specific life period and determine which dasha/sub-lord group their experience best matches.
+  if (hasEvents) {
+    // For event-based questions: rate each KP sub-lord planet by how well it explains
+    // the events described. Much more accurate than a single binary group pick.
+    return `You are a KP Jyotish birth time rectification assistant.
+
+The user has described life events that occurred during a specific period. Your task is to rate
+how well each Ascendant sub-lord planet would explain these events happening in this period.
+
+In KP Jyotish, the Ascendant sub-lord shapes the native's overall life quality and which
+planetary significations manifest most strongly. An Ascendant sub-lord that is also a significator
+of the event's houses makes those events more likely.
+
+${eventBlock}
 
 ${themeBlock}
 
-${eventBlock}
+${historyBlock}
+
+SCORING RULES:
+- Rate each planet as a sub-lord likelihood (0.0–1.0) for causing/allowing this event
+- Example: for marriage, Jupiter and Venus should rate high (0.7–0.9); Ketu or Saturn low (0.2–0.4)
+- bestMatchGroup: the group index most consistent with these ratings (0-indexed)
+- confidence: keep MODERATE (0.3–0.6) — single events rarely confirm the sub-lord definitively
+- reasoning: explain which planets you rated high and why, referencing the specific events
+
+RESPOND ONLY WITH VALID JSON:
+{
+  "bestMatchGroup": <integer>,
+  "confidence": <float 0.2-0.6>,
+  "reasoning": "<2 sentences: which planets rated high and why>",
+  "subLordLikelihoods": {
+    "Sun": <float>, "Moon": <float>, "Mars": <float>, "Mercury": <float>,
+    "Jupiter": <float>, "Venus": <float>, "Saturn": <float>, "Rahu": <float>, "Ketu": <float>
+  }
+}`;
+  }
+
+  // For dasha-period questions without events
+  return `You are a KP Jyotish birth time rectification assistant.
+
+Your task: analyze the user's description of a life period and determine which dasha pattern it matches.
+
+${themeBlock}
 
 ${historyBlock}
 
 SCORING RULES:
 - bestMatchGroup: 0-indexed group number (0=A, 1=B, ...)
-- confidence: 0.0–0.95 (never 1.0 — dasha periods blend at boundaries)
-- If the answer is vague or matches multiple groups: confidence ≤ 0.35
-- If the answer clearly matches one group's planetary themes: confidence 0.65–0.85
-- Use the prior conversation context to avoid contradicting earlier inferences
-- The reasoning must quote specific words or themes from the user's answer
+- confidence: 0.0–0.70 (never above 0.70 — dasha periods blend at transitions)
+- If the answer is vague: confidence ≤ 0.30
+- If the answer clearly matches one group: confidence 0.50–0.70
+- Prior conversation context: avoid contradicting earlier inferences
+- reasoning must quote specific words from the user's answer
 
 RESPOND ONLY WITH VALID JSON:
 {
   "bestMatchGroup": <integer>,
   "confidence": <float>,
-  "reasoning": "<one sentence referencing specific themes from the answer>"
+  "reasoning": "<one sentence>"
 }`;
 }
 
@@ -277,9 +359,10 @@ function buildScoringResult(
   const matchTimes = new Set(matchGroup?.candidateTimes ?? []);
 
   const candidateScores: Record<string, number> = {};
-  // Score formula: high match → multiply by up to 4x; low match → divide by up to 3x
-  const highScore = 1 + parsed.confidence * 3;      // 1.0 → 4.0
-  const lowScore = 1 / (1 + parsed.confidence * 2); // 1.0 → 0.33
+  // Gentler formula: high match → up to 2.5x boost; low match → minimum 0.5x
+  // This prevents a single wrong pick from catastrophically penalizing correct candidates.
+  const highScore = 1 + parsed.confidence * 1.5;    // 1.0 → 2.5 (was 4.0)
+  const lowScore = 1 / (1 + parsed.confidence);     // 1.0 → 0.5 (was 0.33)
 
   for (const c of candidates) {
     candidateScores[c.time] = matchTimes.has(c.time) ? highScore : lowScore;
