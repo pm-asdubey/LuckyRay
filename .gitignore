@@ -1,3 +1,6 @@
+# Claude Code worktrees — never commit
+.claude/worktrees/
+
 # Secrets — never commit
 .env
 .env.local
