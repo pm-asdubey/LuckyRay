@@ -116,7 +116,15 @@ export function buildChartContext(
  * Uses the deterministic interpreter to produce pre-written factual sentences.
  * Gochar (transit) data is appended separately since it is computed at runtime.
  */
-export function serializeChartContext(context: ChartContext): string {
+/**
+ * Serialize a ChartContext into the AI-ready text block.
+ *
+ * @param ragContext Optional block of KP RAG rules to append. When provided,
+ *   these verified KP principles are injected at the end of the context so
+ *   the model grounds its analysis in authoritative doctrine rather than
+ *   improvising from training-data recall.
+ */
+export function serializeChartContext(context: ChartContext, ragContext?: string): string {
   const canonical = (context as ChartContext & { _canonicalChart?: CanonicalChart })._canonicalChart;
 
   // Use deterministic interpreter if canonical chart is attached
@@ -164,6 +172,11 @@ export function serializeChartContext(context: ChartContext): string {
       text += '\n' + dashLines.join('\n');
     }
 
+    // Append KP RAG principles if provided
+    if (ragContext && ragContext.trim()) {
+      text += '\n' + ragContext;
+    }
+
     return text;
   }
 
@@ -206,9 +219,11 @@ export function buildPromptMessages(params: {
   chartContext: ChartContext;
   conversationHistory: AIMessage[];
   question: string;
+  /** KP RAG principles block, produced by @luckyray/kp-rag */
+  ragContext?: string;
 }): AIMessage[] {
-  const { systemPrompt, rulesPrompt, chartContext, conversationHistory, question } = params;
-  const chartText = serializeChartContext(chartContext);
+  const { systemPrompt, rulesPrompt, chartContext, conversationHistory, question, ragContext } = params;
+  const chartText = serializeChartContext(chartContext, ragContext);
   return [
     { role: 'system', content: `${systemPrompt}\n\n${rulesPrompt}\n\n${chartText}` },
     ...conversationHistory.slice(-10),

@@ -8,8 +8,10 @@ import remarkGfm from 'remark-gfm';
 import { ArrowLeft, Download, Loader2, CheckCircle2, ChevronDown, Play, RefreshCw, AlertCircle, Clock } from 'lucide-react';
 import { getProfile, getLatestChart } from '@luckyray/storage';
 import type { Profile, StoredChart } from '@luckyray/shared';
-import { buildChartContext } from '@luckyray/ai';
+import { buildChartContext, serializeChartContext } from '@luckyray/ai';
 import { computeCurrentGochar } from '@luckyray/jyotish';
+import { getRulesForSections, resolveSections } from '@luckyray/kp-rag';
+import type { RAGSelectionInput, ReportTopic } from '@luckyray/kp-rag';
 import { AppShell } from '@/components/layout/app-shell';
 import { Sidebar, BottomNav } from '@/components/layout/nav';
 import { PageLayout, PageHeader } from '@/components/layout/page-layout';
@@ -352,6 +354,66 @@ End with: **In short:** [health timing summary — when to be especially mindful
   return defs[type];
 }
 
+// ─── KP RAG section selector ─────────────────────────────────────────────────
+
+/**
+ * Makes a lightweight AI call (200 tokens, temperature 0) to select the most
+ * relevant KP rule sections for this chart + report type. Falls back to the
+ * deterministic topic baseline on any failure.
+ */
+async function selectRAGContext(
+  chart: import('@luckyray/shared').CanonicalChart,
+  reportType: ReportType,
+): Promise<string> {
+  const topicMap: Record<ReportType, ReportTopic> = {
+    career: 'career',
+    love:   'love',
+    wealth: 'wealth',
+    health: 'health',
+  };
+  const topic = topicMap[reportType];
+
+  // Build the lightweight input from chart data
+  const input: RAGSelectionInput = {
+    reportTopic: topic,
+    ascendantSign: chart.ascendant?.sign ?? '',
+    moonSign: chart.planets?.find(p => p.id === 'Moon')?.sign ?? '',
+    currentMahadasha: chart.dashas?.currentMahadasha?.planet ?? '',
+    currentAntardasha: chart.dashas?.currentAntardasha?.planet ?? '',
+    cuspalSubLords: chart.kp?.cusps
+      ? Object.fromEntries(
+          chart.kp.cusps.slice(0, 6).map(c => [String(c.house), c.subLord])
+        )
+      : undefined,
+  };
+
+  try {
+    const resp = await fetch('/api/ai/rag-select', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+
+    if (!resp.ok) {
+      const sections = resolveSections('', topic);
+      return getRulesForSections(sections);
+    }
+
+    const data = await resp.json() as { sections: string | string[]; source: 'ai' | 'fallback' };
+
+    // Fallback route returns a string[] directly; AI route returns raw text
+    if (data.source === 'fallback' && Array.isArray(data.sections)) {
+      return getRulesForSections(data.sections as import('@luckyray/kp-rag').KPSection[]);
+    }
+
+    const sections = resolveSections(String(data.sections), topic);
+    return getRulesForSections(sections);
+  } catch {
+    const sections = resolveSections('', topic);
+    return getRulesForSections(sections);
+  }
+}
+
 // ─── Stream engine ────────────────────────────────────────────────────────────
 
 interface StreamResult {
@@ -395,6 +457,7 @@ async function streamSection(
   signal: AbortSignal,
   onChunk: (text: string, waitingMsg?: string) => void,
   language: 'en' | 'hi' = 'en',
+  ragContext?: string,
 ): Promise<StreamResult> {
   let fullContent = '';
 
@@ -433,6 +496,7 @@ async function streamSection(
             stream: true,
             maxTokens: SECTION_MAX_TOKENS,
             language,
+            ragContext,
           }),
         });
 
@@ -755,6 +819,10 @@ export default function ReportsPage() {
     const gochar = computeCurrentGochar(storedChart.chart.ascendant.signIndex);
     const chartContext = buildChartContext(storedChart.chart, reportType, gochar.planets);
 
+    // Lightweight AI call to select the most relevant KP rule sections.
+    // Runs once per report — result is reused across all 3 sections.
+    const ragContext = await selectRAGContext(storedChart.chart, reportType);
+
     setReports(prev => ({
       ...prev,
       [reportType]: {
@@ -817,7 +885,7 @@ export default function ReportsPage() {
           }
         };
 
-      let result = await streamSection(section, chartContext, ctrl.signal, makeOnChunk(), language);
+      let result = await streamSection(section, chartContext, ctrl.signal, makeOnChunk(), language, ragContext);
 
       if (result.outcome === 'aborted') break;
 
@@ -836,7 +904,7 @@ export default function ReportsPage() {
         await new Promise(r => setTimeout(r, 30000));
 
         if (!ctrl.signal.aborted) {
-          result = await streamSection(section, chartContext, ctrl.signal, makeOnChunk(true), language);
+          result = await streamSection(section, chartContext, ctrl.signal, makeOnChunk(true), language, ragContext);
         }
       }
 

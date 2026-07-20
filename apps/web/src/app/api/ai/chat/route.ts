@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
     systemPromptOverride?: string;
     systemMode?: 'user' | 'astrologer';
     language?: 'en' | 'hi';
+    /** KP RAG principles block produced by @luckyray/kp-rag — appended to chart context */
+    ragContext?: string;
   };
 
   try {
@@ -39,14 +41,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride, systemMode = 'user', language = 'en' } = body;
+  const { messages, chartContext, model = DEFAULT_MODEL, stream = true, maxTokens = MAX_TOKENS, systemPromptOverride, systemMode = 'user', language = 'en', ragContext } = body;
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return NextResponse.json({ error: 'messages array is required' }, { status: 400 });
   }
 
-  // Build system content
-  const chartText = chartContext ? serializeChartContext(chartContext) : '';
+  // Build system content — RAG context is appended inside serializeChartContext
+  const chartText = chartContext ? serializeChartContext(chartContext, ragContext) : '';
   let basePrompt: string;
   if (systemPromptOverride) {
     basePrompt = systemPromptOverride;
