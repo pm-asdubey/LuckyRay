@@ -21,7 +21,8 @@ import { serializeSignProfiles } from '@luckyray/birth-correction';
 import type { AnalyzePhysicalPayload, AnalyzePhysicalResponse } from '@luckyray/birth-correction';
 
 const NVIDIA_API_BASE = 'https://integrate.api.nvidia.com/v1';
-const DEFAULT_MODEL = 'meta/llama-3.1-70b-instruct';
+const TEXT_MODEL = 'meta/llama-3.1-70b-instruct';
+const VISION_MODEL = 'meta/llama-3.2-11b-vision-instruct';
 
 export const runtime = 'edge';
 
@@ -39,6 +40,7 @@ export async function POST(req: NextRequest) {
   let payload: AnalyzePhysicalPayload & {
     clientPhotoAnalysis?: string;
     voiceTranscription?: string;
+    photoBase64?: string;
   };
   try {
     payload = await req.json();
@@ -46,7 +48,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
 
-  const { userDescriptions, clientPhotoAnalysis, voiceTranscription } = payload;
+  const { userDescriptions, clientPhotoAnalysis, voiceTranscription, photoBase64 } = payload;
 
   const signProfilesBlock = serializeSignProfiles();
 
@@ -86,7 +88,10 @@ RESPOND ONLY WITH VALID JSON:
     userParts.push(`Additional features: ${userDescriptions.additionalFeatures}`);
   }
 
-  if (clientPhotoAnalysis) {
+  if (photoBase64) {
+    userParts.push('\nA clear photo of the person has been provided for visual facial feature analysis.');
+    userParts.push('Please assess facial structure, complexion, eye shape, build impression, and overall bearing from the image.');
+  } else if (clientPhotoAnalysis) {
     userParts.push('\nPHOTO ANALYSIS (automated facial feature extraction):');
     userParts.push(clientPhotoAnalysis);
   }
@@ -97,6 +102,15 @@ RESPOND ONLY WITH VALID JSON:
     userParts.push(`Voice transcription characteristics: ${voiceTranscription}`);
   }
 
+  // Use vision model when a photo is available, text model otherwise
+  const model = photoBase64 ? VISION_MODEL : TEXT_MODEL;
+  const userMessageContent = photoBase64
+    ? [
+        { type: 'text', text: userParts.join('\n') },
+        { type: 'image_url', image_url: { url: photoBase64 } },
+      ]
+    : userParts.join('\n');
+
   try {
     const response = await fetch(`${NVIDIA_API_BASE}/chat/completions`, {
       method: 'POST',
@@ -105,10 +119,10 @@ RESPOND ONLY WITH VALID JSON:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: DEFAULT_MODEL,
+        model,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userParts.join('\n') },
+          { role: 'user', content: userMessageContent },
         ],
         max_tokens: 500,
         temperature: 0.1,

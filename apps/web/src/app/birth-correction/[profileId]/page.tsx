@@ -2,30 +2,92 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronRight, Mic, MicOff, Camera, X, Check, Clock, RefreshCw, ArrowLeft } from 'lucide-react';
+import { ChevronRight, Mic, MicOff, Check, Clock, RefreshCw, ArrowLeft, Plus, CalendarDays } from 'lucide-react';
 import { getProfile, getLatestChart } from '@luckyray/storage';
-import type { Profile, StoredChart } from '@luckyray/shared';
+import type { Profile, StoredChart, PlanetId } from '@luckyray/shared';
 import { AppShell } from '@/components/layout/app-shell';
 import { Sidebar, BottomNav } from '@/components/layout/nav';
 import { PageLayout, PageHeader, PageContent } from '@/components/layout/page-layout';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
 import { useAppStore } from '@/store/app-store';
 import {
   VOICE_READING_PASSAGE,
   VOICE_READING_INSTRUCTIONS,
   SIGN_PHYSICAL_PROFILES,
+  PLANET_THEMES,
   computeConvergence,
   applySignLikelihoodUpdate,
-  applyLikelihoodUpdate,
-  normalizeProbabilities,
 } from '@luckyray/birth-correction';
 import type {
-  JourneyState,
   CandidateBirthTime,
   GeneratedQuestion,
-  InterviewAnswer,
 } from '@luckyray/birth-correction';
+
+// ─── Event-Based Discrimination ───────────────────────────────────────────────
+
+const EVENT_TYPES: { label: string; planets: PlanetId[] }[] = [
+  { label: 'Marriage or relationship milestone',     planets: ['Venus', 'Jupiter'] },
+  { label: 'Career change or major promotion',       planets: ['Saturn', 'Sun'] },
+  { label: 'Relocation or home change',              planets: ['Moon', 'Mars'] },
+  { label: 'Health event or surgery',                planets: ['Mars', 'Saturn'] },
+  { label: 'Financial milestone (gain or loss)',     planets: ['Jupiter', 'Venus'] },
+  { label: 'Birth of a child',                       planets: ['Jupiter', 'Moon'] },
+  { label: 'Loss of a loved one',                    planets: ['Saturn', 'Ketu'] },
+  { label: 'Education or academic achievement',      planets: ['Mercury', 'Jupiter'] },
+  { label: 'Foreign travel or emigration',           planets: ['Rahu', 'Jupiter'] },
+  { label: 'Legal or government matter',             planets: ['Saturn', 'Rahu'] },
+  { label: 'Spiritual or life-changing experience',  planets: ['Ketu', 'Jupiter'] },
+  { label: 'Accident, injury, or sudden event',      planets: ['Mars', 'Rahu'] },
+  { label: 'Other significant life event',           planets: ['Sun', 'Moon'] },
+];
+
+/**
+ * Build a discrimination question by grouping candidates by Ascendant sub-lord.
+ * Used when dasha-based discrimination isn't possible (all same-day candidates
+ * share the same dasha, but their cuspal sub-lords differ within the window).
+ */
+function buildEventQuestion(
+  eventType: string,
+  eventDate: string,
+  candidates: CandidateBirthTime[],
+): GeneratedQuestion | null {
+  const active = candidates.filter(c => c.probability >= 0.01);
+  const groups = new Map<string, string[]>();
+
+  for (const c of active) {
+    const key = c.ascendantSubLord || 'Unknown';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(c.time);
+  }
+
+  if (groups.size < 2) return null;
+
+  const sorted = [...groups.entries()].sort((a, b) => b[1].length - a[1].length);
+  const year = parseInt(eventDate.slice(0, 4), 10) || new Date().getFullYear();
+  const month = eventDate.slice(5, 7);
+  const periodLabel = month ? `${month}/${year}` : String(year);
+
+  const questionGroups = sorted.map(([subLord, times]) => ({
+    planets: [subLord as PlanetId],
+    themeLabel: PLANET_THEMES[subLord as PlanetId]?.generalVibe ?? subLord,
+    candidateCount: times.length,
+    candidateTimes: times,
+  }));
+
+  const optionLines = sorted.slice(0, 4).map(([subLord], i) => {
+    const theme = PLANET_THEMES[subLord as PlanetId]?.generalVibe ?? subLord;
+    return `${String.fromCharCode(65 + i)}) ${subLord}: ${theme}`;
+  });
+
+  return {
+    id: `event-${Date.now()}`,
+    yearStart: year,
+    yearEnd: year,
+    groups: questionGroups,
+    questionText: `Around ${periodLabel} you mentioned: "${eventType}"\n\nWhich planetary energy best describes the overall quality of that time?\n\n${optionLines.join('\n')}`,
+    hint: 'Describe the feeling and themes of that period in your own words.',
+  };
+}
 
 // ─── Step Components ──────────────────────────────────────────────────────────
 
@@ -199,7 +261,7 @@ function SeedStep({
   );
 }
 
-// ─── Step 2: Physical Appearance & Voice ──────────────────────────────────────
+// ─── Step 2: Photo & Voice ────────────────────────────────────────────────────
 
 function PhysicalStep({
   candidates,
@@ -208,10 +270,7 @@ function PhysicalStep({
   candidates: CandidateBirthTime[];
   onComplete: (updatedCandidates: CandidateBirthTime[]) => void;
 }) {
-  const [height, setHeight] = useState('');
-  const [build, setBuild] = useState('');
-  const [complexion, setComplexion] = useState('');
-  const [faceNotes, setFaceNotes] = useState('');
+  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null);
   const [additionalFeatures, setAdditionalFeatures] = useState('');
   const [voiceNotes, setVoiceNotes] = useState('');
   const [showVoicePassage, setShowVoicePassage] = useState(false);
@@ -221,9 +280,18 @@ function PhysicalStep({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const addToast = useAppStore(s => s.addToast);
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => setPhotoDataUrl(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const startRecording = async () => {
     try {
@@ -233,17 +301,12 @@ function PhysicalStep({
       setIsRecording(true);
       setRecordingSeconds(0);
       recorder.start();
-
       timerRef.current = setInterval(() => {
         setRecordingSeconds(s => {
-          if (s >= 90) {
-            stopRecording();
-            return s;
-          }
+          if (s >= 90) { stopRecording(); return s; }
           return s + 1;
         });
       }, 1000);
-
     } catch {
       addToast({ type: 'error', message: 'Microphone access denied' });
     }
@@ -265,8 +328,19 @@ function PhysicalStep({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           signProfiles: SIGN_PHYSICAL_PROFILES,
-          userDescriptions: { height, build, complexion, faceNotes, voiceNotes, additionalFeatures },
-          hasPhoto: false,
+          userDescriptions: {
+            height: '',
+            build: '',
+            complexion: '',
+            faceNotes: additionalFeatures,
+            voiceNotes,
+            additionalFeatures,
+          },
+          hasPhoto: !!photoDataUrl,
+          clientPhotoAnalysis: photoDataUrl
+            ? `A photo was provided by the user. Base64 image data follows for visual analysis.`
+            : undefined,
+          photoBase64: photoDataUrl ?? undefined,
         }),
       });
 
@@ -279,7 +353,7 @@ function PhysicalStep({
 
       setAnalysisResult(data.reasoning);
       const updated = applySignLikelihoodUpdate(candidates, data.signLikelihoods);
-      setTimeout(() => onComplete(updated), 1200);
+      setTimeout(() => onComplete(updated), 1500);
     } catch {
       addToast({ type: 'error', message: 'Analysis failed — skipping this step' });
       onComplete(candidates);
@@ -288,97 +362,89 @@ function PhysicalStep({
     }
   };
 
-  const canAnalyze = height || build || complexion || faceNotes;
+  const canAnalyze = photoDataUrl || voiceNotes || additionalFeatures;
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-light text-white mb-1">Physical appearance</h2>
+        <h2 className="text-xl font-light text-white mb-1">Photo & voice</h2>
         <p className="text-sm text-white/40">
-          Physical features carry the signature of the rising sign. Describe as accurately as you can.
+          Your photo and voice carry the signature of your rising sign.
+          Both are analyzed locally and never stored.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="text-xs text-white/50 block mb-1.5">Height</label>
-          <select
-            value={height}
-            onChange={e => setHeight(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
+      {/* Photo capture */}
+      <div className="space-y-3">
+        <div className="text-xs text-white/50 font-medium uppercase tracking-wide">Photo</div>
+
+        {photoDataUrl ? (
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoDataUrl}
+              alt="Your photo"
+              className="w-full max-h-64 object-cover rounded-xl border border-white/10"
+            />
+            <button
+              onClick={() => { setPhotoDataUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+              className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white/70 hover:text-white flex items-center justify-center text-sm"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full h-40 border-2 border-dashed border-white/10 rounded-xl flex flex-col items-center justify-center gap-2 text-white/30 hover:border-white/20 hover:text-white/50 transition-all group"
           >
-            <option value="">Select</option>
-            <option>Short (below 5'4")</option>
-            <option>Medium (5'4"–5'8")</option>
-            <option>Tall (5'9"–6')</option>
-            <option>Very tall (above 6')</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-white/50 block mb-1.5">Build</label>
-          <select
-            value={build}
-            onChange={e => setBuild(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
-          >
-            <option value="">Select</option>
-            <option>Lean / slender</option>
-            <option>Athletic / muscular</option>
-            <option>Medium / average</option>
-            <option>Full / solid</option>
-            <option>Heavy / stocky</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-white/50 block mb-1.5">Complexion</label>
-          <select
-            value={complexion}
-            onChange={e => setComplexion(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
-          >
-            <option value="">Select</option>
-            <option>Very fair / pale</option>
-            <option>Light / fair</option>
-            <option>Wheatish / medium</option>
-            <option>Olive / dusky</option>
-            <option>Dark / deep</option>
-          </select>
-        </div>
-        <div>
-          <label className="text-xs text-white/50 block mb-1.5">Face shape</label>
-          <select
-            value={faceNotes}
-            onChange={e => setFaceNotes(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50"
-          >
-            <option value="">Select</option>
-            <option>Round / full</option>
-            <option>Oval</option>
-            <option>Square / angular</option>
-            <option>Long / narrow</option>
-            <option>Heart-shaped</option>
-            <option>Diamond</option>
-          </select>
-        </div>
+            <div className="w-10 h-10 rounded-full bg-white/5 group-hover:bg-white/8 flex items-center justify-center transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </div>
+            <span className="text-sm">Take photo or upload</span>
+            <span className="text-xs">Clear front-facing, good lighting</span>
+          </button>
+        )}
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="user"
+          className="hidden"
+          onChange={handlePhotoSelect}
+        />
+
+        <p className="text-xs text-white/25 leading-relaxed">
+          The AI looks for structural facial features — face shape, eye character,
+          complexion, and bearing — to assess which rising signs are more likely.
+          On mobile, this opens your front camera directly.
+        </p>
       </div>
 
+      {/* Additional notes */}
       <div>
-        <label className="text-xs text-white/50 block mb-1.5">Any distinguishing features</label>
+        <label className="text-xs text-white/50 block mb-1.5">Additional appearance notes (optional)</label>
         <textarea
           value={additionalFeatures}
           onChange={e => setAdditionalFeatures(e.target.value)}
-          placeholder="e.g. prominent nose, very expressive eyes, graceful hands, often told I look younger than my age..."
+          placeholder="e.g. very expressive eyes, often told I look younger than my age, prominent jawline, graceful hands..."
           rows={2}
           className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/50 resize-none"
         />
       </div>
 
-      {/* Voice Recording Section */}
+      {/* Voice recording */}
       <div className="border border-white/8 rounded-xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-white">Voice analysis</div>
-            <div className="text-xs text-white/40">Read a passage aloud — how you speak reveals your rising sign</div>
+            <div className="text-sm font-medium text-white">Voice recording</div>
+            <div className="text-xs text-white/40">How you speak reveals your rising sign's planetary influence</div>
           </div>
           <button
             onClick={() => setShowVoicePassage(v => !v)}
@@ -390,7 +456,7 @@ function PhysicalStep({
 
         {showVoicePassage && (
           <div className="bg-black/20 rounded-lg p-4 border border-white/5">
-            <div className="text-xs text-white/30 mb-2 font-medium tracking-wide uppercase">Read this aloud</div>
+            <div className="text-xs text-white/30 mb-2 font-medium tracking-wide uppercase">Read this aloud — ~1 minute</div>
             <p className="text-sm text-white/80 leading-relaxed whitespace-pre-line font-light">
               {VOICE_READING_PASSAGE}
             </p>
@@ -409,23 +475,20 @@ function PhysicalStep({
           {!recordingComplete ? (
             <button
               onClick={isRecording ? stopRecording : startRecording}
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                ${isRecording
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                isRecording
                   ? 'bg-red-500/20 border border-red-500/40 text-red-400 animate-pulse'
-                  : 'bg-white/5 border border-white/10 text-white/60 hover:bg-white/10'}
-              `}
+                  : 'bg-white/5 border border-white/10 text-white/60 hover:bg-white/10'
+              }`}
             >
-              {isRecording ? (
-                <><MicOff className="w-4 h-4" /> Stop recording ({recordingSeconds}s)</>
-              ) : (
-                <><Mic className="w-4 h-4" /> Record voice</>
-              )}
+              {isRecording
+                ? <><MicOff className="w-4 h-4" /> Stop ({recordingSeconds}s)</>
+                : <><Mic className="w-4 h-4" /> Record reading</>}
             </button>
           ) : (
             <div className="flex items-center gap-2 text-sm text-green-400">
               <Check className="w-4 h-4" />
-              Recording captured ({recordingSeconds}s)
+              {recordingSeconds}s captured
               <button
                 onClick={() => { setRecordingComplete(false); setRecordingSeconds(0); }}
                 className="text-white/30 hover:text-white/60 ml-2"
@@ -437,40 +500,30 @@ function PhysicalStep({
         </div>
 
         <div>
-          <label className="text-xs text-white/50 block mb-1.5">Describe your voice (optional)</label>
+          <label className="text-xs text-white/50 block mb-1.5">Describe your voice style (optional)</label>
           <input
             value={voiceNotes}
             onChange={e => setVoiceNotes(e.target.value)}
-            placeholder="e.g. soft and measured, naturally loud, fast talker, monotone..."
+            placeholder="e.g. soft and measured, naturally loud, fast talker, monotone, sing-song..."
             className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/50"
           />
         </div>
       </div>
 
       {analysisResult && (
-        <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-sm text-white/70">
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 text-sm text-white/70 leading-relaxed">
           {analysisResult}
         </div>
       )}
 
       <div className="flex gap-3">
-        <Button
-          onClick={() => onComplete(candidates)}
-          variant="ghost"
-          className="flex-1 text-white/40"
-        >
-          Skip this step
+        <Button onClick={() => onComplete(candidates)} variant="ghost" className="text-white/40">
+          Skip
         </Button>
-        <Button
-          onClick={handleAnalyze}
-          disabled={!canAnalyze || analyzing}
-          className="flex-1"
-        >
-          {analyzing ? (
-            <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Analyzing…</>
-          ) : (
-            <>Analyze appearance<ChevronRight className="w-4 h-4 ml-2" /></>
-          )}
+        <Button onClick={handleAnalyze} disabled={!canAnalyze || analyzing} className="flex-1">
+          {analyzing
+            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Analyzing…</>
+            : <>Analyze & continue <ChevronRight className="w-4 h-4 ml-2" /></>}
         </Button>
       </div>
     </div>
@@ -492,27 +545,30 @@ function InterviewStep({
 }) {
   const [currentQuestion, setCurrentQuestion] = useState<GeneratedQuestion | null>(null);
   const [questionLoading, setQuestionLoading] = useState(false);
+  const [dashaQuestionsExhausted, setDashaQuestionsExhausted] = useState(false);
   const [answerText, setAnswerText] = useState('');
   const [scoring, setScoring] = useState(false);
   const [questionsAsked, setQuestionsAsked] = useState<GeneratedQuestion[]>([]);
   const [questionsAnswered, setQuestionsAnswered] = useState(0);
   const [lastReasoning, setLastReasoning] = useState<string | null>(null);
   const [convergence, setConvergence] = useState(computeConvergence(candidates));
+
+  // Event entry form state
+  const [eventType, setEventType] = useState('');
+  const [eventDate, setEventDate] = useState('');
+  const [eventDescription, setEventDescription] = useState('');
+
   const addToast = useAppStore(s => s.addToast);
   const currentCandidatesRef = useRef(candidates);
   currentCandidatesRef.current = candidates;
 
-  const loadNextQuestion = async (currentCandidates: CandidateBirthTime[], asked: GeneratedQuestion[]) => {
+  const loadNextDashaQuestion = async (currentCandidates: CandidateBirthTime[], asked: GeneratedQuestion[]) => {
     setQuestionLoading(true);
     try {
       const res = await fetch('/api/birth-correction/next-question', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          candidates: currentCandidates,
-          questionsAlreadyAsked: asked,
-          birthYear,
-        }),
+        body: JSON.stringify({ candidates: currentCandidates, questionsAlreadyAsked: asked, birthYear }),
       });
       const data = await res.json() as {
         question: GeneratedQuestion | null;
@@ -520,28 +576,28 @@ function InterviewStep({
       };
       setCurrentQuestion(data.question);
       setConvergence(data.convergence);
+      if (!data.question) setDashaQuestionsExhausted(true);
     } catch {
-      addToast({ type: 'error', message: 'Could not generate next question' });
+      setDashaQuestionsExhausted(true);
     } finally {
       setQuestionLoading(false);
     }
   };
 
   useEffect(() => {
-    loadNextQuestion(candidates, []);
+    loadNextDashaQuestion(candidates, []);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleSubmitAnswer = async () => {
-    if (!currentQuestion || !answerText.trim()) return;
+  const submitQuestion = async (question: GeneratedQuestion, freeText: string) => {
     setScoring(true);
     try {
       const res = await fetch('/api/birth-correction/score-answer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          question: currentQuestion,
-          answer: { questionId: currentQuestion.id, freeText: answerText },
+          question,
+          answer: { questionId: question.id, freeText },
           candidates: currentCandidatesRef.current,
         }),
       });
@@ -553,24 +609,48 @@ function InterviewStep({
       setLastReasoning(data.result.reasoning);
       onUpdate(data.updatedCandidates);
 
-      const newAsked = [...questionsAsked, currentQuestion];
+      const newAsked = [...questionsAsked, question];
       setQuestionsAsked(newAsked);
       setQuestionsAnswered(q => q + 1);
       setAnswerText('');
       setCurrentQuestion(null);
+      setEventType('');
+      setEventDate('');
+      setEventDescription('');
 
       const newConvergence = computeConvergence(data.updatedCandidates);
       setConvergence(newConvergence);
 
-      if (!newConvergence.hasConverged) {
-        await loadNextQuestion(data.updatedCandidates, newAsked);
+      // Try loading next dasha question; if exhausted, stay in event-entry mode
+      if (!newConvergence.hasConverged && !dashaQuestionsExhausted) {
+        await loadNextDashaQuestion(data.updatedCandidates, newAsked);
+      } else if (!newConvergence.hasConverged) {
+        setDashaQuestionsExhausted(true);
       }
-
     } catch {
       addToast({ type: 'error', message: 'Scoring failed — try again' });
     } finally {
       setScoring(false);
     }
+  };
+
+  const handleSubmitDashaAnswer = () => {
+    if (!currentQuestion || !answerText.trim()) return;
+    submitQuestion(currentQuestion, answerText);
+  };
+
+  const handleSubmitEvent = () => {
+    if (!eventType || !eventDate) return;
+    const q = buildEventQuestion(eventType, eventDate, currentCandidatesRef.current);
+    if (!q) {
+      // All candidates have the same sub-lord — can't discriminate further
+      addToast({ type: 'info', message: 'All remaining candidates share the same Ascendant sub-lord. Add more events for further refinement.' });
+      return;
+    }
+    const freeText = eventDescription
+      ? `${eventType}. ${eventDescription}`
+      : eventType;
+    submitQuestion(q, freeText);
   };
 
   if (convergence.hasConverged) {
@@ -582,7 +662,7 @@ function InterviewStep({
           </div>
           <h2 className="text-xl font-light text-white mb-1">Converged</h2>
           <p className="text-sm text-white/40">
-            The birth time has been narrowed to a {convergence.effectiveWindowMinutes}-minute window
+            Birth time narrowed to a {convergence.effectiveWindowMinutes}-minute window
             with {(convergence.topProbability * 100).toFixed(0)}% confidence.
           </p>
         </div>
@@ -599,8 +679,9 @@ function InterviewStep({
       <div>
         <h2 className="text-xl font-light text-white mb-1">Life event interview</h2>
         <p className="text-sm text-white/40">
-          Each question is chosen to best distinguish between the remaining birth time candidates.
-          Answer freely — the AI will interpret your words.
+          {dashaQuestionsExhausted
+            ? 'Your birth time is within a single rising sign window. Add specific life events with precise dates to pinpoint the exact sub-lord.'
+            : 'Each question targets the most informative split in your birth time candidates. Answer freely.'}
         </p>
       </div>
 
@@ -609,7 +690,7 @@ function InterviewStep({
         <span>·</span>
         <span>{convergence.effectiveWindowMinutes}min uncertainty window</span>
         <span>·</span>
-        <span>{(convergence.topProbability * 100).toFixed(0)}% peak confidence</span>
+        <span>{candidates.filter(c => c.probability >= 0.01).length} candidates</span>
       </div>
 
       {lastReasoning && (
@@ -618,13 +699,14 @@ function InterviewStep({
         </div>
       )}
 
+      {/* ── Dasha-based question (when available) ── */}
       {questionLoading ? (
         <div className="space-y-3 animate-pulse">
           <div className="h-4 bg-white/5 rounded w-3/4" />
           <div className="h-4 bg-white/5 rounded w-1/2" />
           <div className="h-32 bg-white/5 rounded-xl" />
         </div>
-      ) : currentQuestion ? (
+      ) : currentQuestion && !dashaQuestionsExhausted ? (
         <div className="space-y-4">
           <div className="bg-white/3 border border-white/8 rounded-xl p-5">
             <div className="text-xs text-amber-500/60 font-medium mb-3 tracking-wide uppercase">
@@ -635,15 +717,13 @@ function InterviewStep({
             <p className="text-sm text-white/80 leading-relaxed whitespace-pre-line">
               {currentQuestion.questionText}
             </p>
-            <p className="text-xs text-white/30 mt-3 italic">
-              {currentQuestion.hint}
-            </p>
+            <p className="text-xs text-white/30 mt-3 italic">{currentQuestion.hint}</p>
           </div>
 
           <textarea
             value={answerText}
             onChange={e => setAnswerText(e.target.value)}
-            placeholder="Describe what this period was like for you. Include specific events, feelings, or life changes — the more detail, the more accurate the result."
+            placeholder="Describe what this period was like for you. Include specific events, feelings, or changes — the more detail, the more accurate the result."
             rows={4}
             className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/30 resize-none transition-colors"
           />
@@ -654,37 +734,90 @@ function InterviewStep({
                 const newAsked = [...questionsAsked, currentQuestion];
                 setQuestionsAsked(newAsked);
                 setCurrentQuestion(null);
-                loadNextQuestion(currentCandidatesRef.current, newAsked);
+                loadNextDashaQuestion(currentCandidatesRef.current, newAsked);
               }}
               variant="ghost"
               className="text-white/30 hover:text-white/50"
             >
               Skip
             </Button>
-            <Button
-              onClick={handleSubmitAnswer}
-              disabled={!answerText.trim() || scoring}
-              className="flex-1"
-            >
-              {scoring ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Analyzing…</>
-              ) : (
-                <>Submit answer<ChevronRight className="w-4 h-4 ml-2" /></>
-              )}
+            <Button onClick={handleSubmitDashaAnswer} disabled={!answerText.trim() || scoring} className="flex-1">
+              {scoring
+                ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Analyzing…</>
+                : <>Submit<ChevronRight className="w-4 h-4 ml-2" /></>}
             </Button>
           </div>
         </div>
-      ) : (
-        <div className="text-center py-8 text-white/30 text-sm">
-          No more discriminating questions available.
+      ) : null}
+
+      {/* ── Event-date entry (always shown; primary mode when dasha questions exhausted) ── */}
+      <div className={`border rounded-xl p-5 space-y-4 transition-all ${
+        dashaQuestionsExhausted ? 'border-amber-500/20 bg-amber-500/3' : 'border-white/6 bg-white/2'
+      }`}>
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-amber-400/60" />
+          <span className="text-sm font-medium text-white">Add a life event</span>
+          {dashaQuestionsExhausted && (
+            <span className="text-xs text-amber-400/60 ml-auto">Primary refinement method</span>
+          )}
         </div>
-      )}
+        <p className="text-xs text-white/30">
+          Precise dates unlock KP sub-lord matching — the most accurate rectification method.
+          The more specific the date, the more the system can narrow candidates.
+        </p>
+
+        <div>
+          <label className="text-xs text-white/40 block mb-1.5">Event type</label>
+          <select
+            value={eventType}
+            onChange={e => setEventType(e.target.value)}
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/40"
+          >
+            <option value="">Select an event type…</option>
+            {EVENT_TYPES.map(e => (
+              <option key={e.label} value={e.label}>{e.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs text-white/40 block mb-1.5">Date (precise as possible)</label>
+          <input
+            type="date"
+            value={eventDate}
+            onChange={e => setEventDate(e.target.value)}
+            max={new Date().toISOString().slice(0, 10)}
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500/40"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-white/40 block mb-1.5">Description (optional — any detail helps)</label>
+          <textarea
+            value={eventDescription}
+            onChange={e => setEventDescription(e.target.value)}
+            placeholder="e.g. Got married in a small ceremony — it was joyful and felt long-awaited. Partner is 3 years older."
+            rows={3}
+            className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-amber-500/40 resize-none"
+          />
+        </div>
+
+        <Button
+          onClick={handleSubmitEvent}
+          disabled={!eventType || !eventDate || scoring}
+          className="w-full"
+        >
+          {scoring
+            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Analyzing…</>
+            : <><Plus className="w-4 h-4 mr-2" />Add event & refine</>}
+        </Button>
+      </div>
 
       <ProbabilityBar candidates={candidates} />
 
-      {questionsAnswered >= 3 && (
+      {questionsAnswered >= 2 && (
         <Button onClick={onComplete} variant="ghost" className="w-full text-white/40 hover:text-white/60">
-          I'm done answering — show results
+          View results
         </Button>
       )}
     </div>
@@ -932,7 +1065,8 @@ export default function BirthCorrectionPage() {
               </>
             )}
 
-            {step > 0 && step < 3 && candidates.length > 0 && (
+            {/* ProbabilityBar is rendered inside PhysicalStep and InterviewStep directly */}
+            {step === 1 && candidates.length > 0 && (
               <div className="mt-8 pt-6 border-t border-white/5">
                 <ProbabilityBar candidates={candidates} />
               </div>
