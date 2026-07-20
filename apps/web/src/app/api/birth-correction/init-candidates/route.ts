@@ -3,17 +3,44 @@
  *
  * Given a birth date + uncertainty window + location, generates all candidate
  * birth times, computes the Placidus ascendant + KP sub-lord for each, and
- * builds the dasha grid for discrimination.
+ * builds a compact dasha grid for discrimination.
  *
- * This is the first call in the birth correction journey.
- * Returns a list of CandidateBirthTime objects with uniform probabilities.
+ * The dasha grid is computed ONCE from the first chart (Moon moves <0.02° over
+ * one day, so the dasha sequence is identical for all candidates in a window).
+ * Per-candidate work is ascendant sign + KP cuspal sub-lord only.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { generateCandidateTimes, buildDashaGrid } from '@luckyray/birth-correction';
-import type { TimeWindow, CandidateBirthTime } from '@luckyray/birth-correction';
+import { generateCandidateTimes } from '@luckyray/birth-correction';
+import type { TimeWindow, CandidateBirthTime, CompactDashaMap } from '@luckyray/birth-correction';
+import type { DashaPeriod, CanonicalChart } from '@luckyray/shared';
 
-export const runtime = 'nodejs'; // Needs jyotish package which uses require()
+export const runtime = 'nodejs';
+
+type GenerateChartFn = (input: {
+  profile: { id: string; name: string };
+  birthDetails: {
+    date: string; time: string; place: string;
+    latitude: number; longitude: number; timezone: string; utcOffset: number;
+  };
+}) => { success: boolean; chart?: CanonicalChart; error?: string };
+
+/** Build compact year-keyed dasha grid from already-computed allPeriods. */
+function buildGridFromPeriods(
+  allPeriods: DashaPeriod[],
+  fromYear: number,
+  toYear: number,
+): CompactDashaMap {
+  const grid: CompactDashaMap = {};
+  for (let year = fromYear; year <= toYear; year++) {
+    const ref = new Date(year, 5, 15); // June 15 — mid-year reference
+    const md = allPeriods.find(p => new Date(p.startDate) <= ref && new Date(p.endDate) >= ref);
+    if (!md) continue;
+    const ad = md.antardasha?.find(a => new Date(a.startDate) <= ref && new Date(a.endDate) >= ref) ?? null;
+    grid[String(year)] = { md: md.planet, ad: ad?.planet ?? null };
+  }
+  return grid;
+}
 
 export async function POST(req: NextRequest) {
   let window: TimeWindow;
@@ -29,15 +56,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'birthDate, latitude, longitude required' }, { status: 400 });
   }
 
-  // Use jyotish to compute chart for each candidate time
-  const { generateChart } = require('@luckyray/jyotish') as {
-    generateChart: (input: {
-      profile: { id: string; name: string };
-      birthDetails: {
-        date: string; time: string; place: string;
-        latitude: number; longitude: number; timezone: string; utcOffset: number;
-      };
-    }) => { success: boolean; chart?: import('@luckyray/shared').CanonicalChart; error?: string };
+  const { generateChart } = require('@luckyray/jyotish') as { generateChart: GenerateChartFn };
+
+  const birthDetails = {
+    place: 'Unknown',
+    latitude,
+    longitude,
+    timezone: timezone || 'Asia/Kolkata',
+    utcOffset: utcOffset ?? 330,
   };
 
   const candidateTimes = generateCandidateTimes(window);
@@ -47,19 +73,20 @@ export async function POST(req: NextRequest) {
   const candidates: CandidateBirthTime[] = [];
   const initialProbability = 1 / candidateTimes.length;
 
+  // Shared dasha grid — computed from first successful chart, reused for all candidates
+  let sharedDashaGrid: CompactDashaMap | null = null;
+  let sharedMoonLon = 0;
+
   for (const time of candidateTimes) {
-    const result = generateChart({
-      profile: { id: 'rectification', name: 'Candidate' },
-      birthDetails: {
-        date: birthDate,
-        time,
-        place: 'Unknown',
-        latitude,
-        longitude,
-        timezone: timezone || 'Asia/Kolkata',
-        utcOffset: utcOffset ?? 330,
-      },
-    });
+    let result;
+    try {
+      result = generateChart({
+        profile: { id: 'rectification', name: 'Candidate' },
+        birthDetails: { date: birthDate, time, ...birthDetails },
+      });
+    } catch {
+      continue;
+    }
 
     if (!result.success || !result.chart) continue;
 
@@ -67,18 +94,11 @@ export async function POST(req: NextRequest) {
     const moon = chart.planets.find(p => p.id === 'Moon');
     if (!moon) continue;
 
-    // Compute Julian Day for this candidate birth time
-    const [year, month, day] = birthDate.split('-').map(Number);
-    const [hours, mins] = time.split(':').map(Number);
-    const utcHours = (hours ?? 0) + (mins ?? 0) / 60 - (utcOffset ?? 330) / 60;
-    const julianDay = dateToJulianDay(year!, month!, day!, utcHours);
-
-    const dashaData = buildDashaGrid(
-      moon.siderealLongitude,
-      julianDay,
-      birthYear,
-      currentYear,
-    );
+    // Build dasha grid once — Moon longitude changes ~0.5° per day, negligible over 24h
+    if (!sharedDashaGrid) {
+      sharedMoonLon = moon.siderealLongitude;
+      sharedDashaGrid = buildGridFromPeriods(chart.dashas.allPeriods, birthYear, currentYear);
+    }
 
     candidates.push({
       time,
@@ -86,22 +106,14 @@ export async function POST(req: NextRequest) {
       ascendantSign: chart.ascendant.sign,
       ascendantDegrees: chart.ascendant.signIndex * 30 + chart.ascendant.degree + chart.ascendant.minute / 60,
       ascendantSubLord: chart.kp?.cusps?.[0]?.subLord ?? '',
-      moonSiderealLon: moon.siderealLongitude,
-      dashaData,
+      moonSiderealLon: sharedMoonLon,
+      dashaData: sharedDashaGrid,
     });
   }
 
   if (candidates.length === 0) {
-    return NextResponse.json({ error: 'Could not compute any candidates' }, { status: 500 });
+    return NextResponse.json({ error: 'Could not compute any candidates — check birth details' }, { status: 500 });
   }
 
   return NextResponse.json({ candidates, totalCount: candidates.length });
-}
-
-function dateToJulianDay(year: number, month: number, day: number, utcHour: number): number {
-  // Standard Julian Day calculation
-  if (month <= 2) { year -= 1; month += 12; }
-  const A = Math.floor(year / 100);
-  const B = 2 - A + Math.floor(A / 4);
-  return Math.floor(365.25 * (year + 4716)) + Math.floor(30.6001 * (month + 1)) + day + utcHour / 24 + B - 1524.5;
 }
