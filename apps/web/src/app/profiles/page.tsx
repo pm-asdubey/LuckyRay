@@ -175,13 +175,20 @@ function ProfileCard({
           </div>
         </div>
       </div>
-      <div className="border-t border-surface-border">
+      <div className="border-t border-surface-border divide-y divide-surface-border/60">
         <Link
           href={`/chart/${profile.id}`}
-          className="flex items-center justify-between px-4 py-2.5 text-xs text-content-muted hover:text-accent hover:bg-accent-subtle/50 transition-colors rounded-b-xl group/link"
+          className="flex items-center justify-between px-4 py-2.5 text-xs text-content-muted hover:text-accent hover:bg-accent-subtle/50 transition-colors group/link"
           onClick={onSelect}
         >
           <span>{t.profiles.viewChart}</span>
+          <ArrowRight size={13} className="group-hover/link:translate-x-0.5 transition-transform" />
+        </Link>
+        <Link
+          href={`/birth-correction/${profile.id}`}
+          className="flex items-center justify-between px-4 py-2.5 text-xs text-content-muted hover:text-amber-400/70 hover:bg-amber-500/5 transition-colors rounded-b-xl group/link"
+        >
+          <span>Rectify birth time</span>
           <ArrowRight size={13} className="group-hover/link:translate-x-0.5 transition-transform" />
         </Link>
       </div>

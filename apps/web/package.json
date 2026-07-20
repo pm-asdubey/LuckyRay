@@ -14,6 +14,7 @@
     "@luckyray/ai": "*",
     "@luckyray/astronomy": "*",
     "@luckyray/jyotish": "*",
+    "@luckyray/birth-correction": "*",
     "@luckyray/kp-rag": "*",
     "@luckyray/shared": "*",
     "@luckyray/storage": "*",
